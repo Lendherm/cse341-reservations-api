@@ -13,12 +13,25 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/reservations-api';
+// Database connection with production settings
+const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose.connect(MONGODB_URI)
-.then(() => console.log('✅ Connected to MongoDB'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI is not defined in environment variables');
+  process.exit(1);
+}
+
+mongoose.connect(MONGODB_URI, {
+  // Remove deprecated options for newer MongoDB drivers
+})
+.then(() => {
+  console.log('✅ Connected to MongoDB');
+  console.log(`📊 Database: ${mongoose.connection.db.databaseName}`);
+})
+.catch(err => {
+  console.error('❌ MongoDB connection error:', err.message);
+  // Don't exit in production, let the app start and try to reconnect
+});
 
 // Routes
 app.use('/api/users', require('./routes/users'));
@@ -33,11 +46,13 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
 
 // Health check route
 app.get('/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
   res.json({ 
     success: true, 
     message: 'Reservations API is running',
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+    environment: process.env.NODE_ENV || 'development',
+    database: dbStatus
   });
 });
 
@@ -48,9 +63,12 @@ app.get('/', (req, res) => {
     message: 'Welcome to Reservations API - Stay & Go',
     documentation: '/api-docs',
     version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
     endpoints: {
       users: '/api/users',
-      properties: '/api/properties'
+      properties: '/api/properties',
+      health: '/health',
+      docs: '/api-docs'
     }
   });
 });
@@ -58,7 +76,7 @@ app.get('/', (req, res) => {
 // Error handler middleware
 app.use(errorHandler);
 
-// Handle 404 - This must be AFTER all other routes
+// Handle 404
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -74,10 +92,11 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server is running on port ${PORT}`);
-  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📚 API Documentation: /api-docs`);
+  console.log(`🏥 Health check: /health`);
 });
 
 module.exports = app;
