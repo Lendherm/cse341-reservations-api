@@ -8,6 +8,7 @@ const {
   deleteProperty
 } = require('../controllers/propertiesController');
 const { validateProperty, validateObjectId } = require('../middleware/validation');
+const validateOwnerExists = require('../middleware/validateOwnerExists');
 
 /**
  * @swagger
@@ -20,7 +21,7 @@ const { validateProperty, validateObjectId } = require('../middleware/validation
  * @swagger
  * /api/properties:
  *   get:
- *     summary: Get all properties with filtering and pagination
+ *     summary: Get all properties with pagination and filters
  *     tags: [Properties]
  *     parameters:
  *       - in: query
@@ -35,7 +36,7 @@ const { validateProperty, validateObjectId } = require('../middleware/validation
  *         schema:
  *           type: integer
  *           minimum: 1
- *           maximum: 50
+ *           maximum: 100
  *           default: 10
  *         description: Number of properties per page
  *       - in: query
@@ -63,15 +64,9 @@ const { validateProperty, validateObjectId } = require('../middleware/validation
  *       - in: query
  *         name: minCapacity
  *         schema:
- *           type: number
+ *           type: integer
  *           minimum: 1
- *           maximum: 10
  *         description: Minimum room capacity
- *       - in: query
- *         name: amenities
- *         schema:
- *           type: string
- *         description: Comma-separated list of amenities
  *     responses:
  *       200:
  *         description: List of properties retrieved successfully
@@ -85,6 +80,7 @@ const { validateProperty, validateObjectId } = require('../middleware/validation
  *                   example: true
  *                 count:
  *                   type: integer
+ *                   description: Number of properties in current page
  *                 pagination:
  *                   type: object
  *                   properties:
@@ -133,7 +129,7 @@ router.get('/', getAllProperties);
  *       400:
  *         description: Invalid ID format
  *       404:
- *         description: Property not found or not active
+ *         description: Property not found
  *       500:
  *         description: Server error
  */
@@ -150,30 +146,98 @@ router.get('/:id', validateObjectId, getPropertyById);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Property'
- *           example:
- *             ownerId: "650a1b2c3d4e5f0012345678"
- *             name: "Luxury Beach Resort"
- *             description: "A beautiful resort with ocean views"
- *             address:
- *               city: "Miami"
- *               state: "Florida"
- *               country: "USA"
- *               coords:
- *                 lat: 25.7617
- *                 lng: -80.1918
- *             amenities: ["pool", "wifi", "gym", "spa"]
- *             rooms:
- *               - roomId: "BEACH001"
- *                 type: "double"
- *                 capacity: 2
- *                 pricePerNight: 199
- *                 images: ["image1.jpg", "image2.jpg"]
- *                 isAvailable: true
- *             policies:
- *               cancellation: "moderate"
- *               checkIn: "3:00 PM"
- *               checkOut: "11:00 AM"
+ *             type: object
+ *             required:
+ *               - ownerId
+ *               - name
+ *               - address
+ *               - rooms
+ *             properties:
+ *               ownerId:
+ *                 type: string
+ *                 example: "650a1b2c3d4e5f0012345678"
+ *               name:
+ *                 type: string
+ *                 example: "Luxury Beach Resort"
+ *               description:
+ *                 type: string
+ *                 example: "A beautiful resort with stunning ocean views"
+ *               address:
+ *                 type: object
+ *                 required:
+ *                   - city
+ *                   - country
+ *                 properties:
+ *                   city:
+ *                     type: string
+ *                     example: "Miami"
+ *                   state:
+ *                     type: string
+ *                     example: "Florida"
+ *                   country:
+ *                     type: string
+ *                     example: "USA"
+ *                   coords:
+ *                     type: object
+ *                     properties:
+ *                       lat:
+ *                         type: number
+ *                         example: 25.7617
+ *                       lng:
+ *                         type: number
+ *                         example: -80.1918
+ *               amenities:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["pool", "wifi", "gym"]
+ *               rooms:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - roomId
+ *                     - type
+ *                     - capacity
+ *                     - pricePerNight
+ *                   properties:
+ *                     roomId:
+ *                       type: string
+ *                       example: "BEACH001"
+ *                     type:
+ *                       type: string
+ *                       enum: [single, double, suite, deluxe]
+ *                       example: "double"
+ *                     capacity:
+ *                       type: integer
+ *                       example: 2
+ *                     pricePerNight:
+ *                       type: number
+ *                       example: 199.99
+ *                     images:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["room1.jpg"]
+ *                     isAvailable:
+ *                       type: boolean
+ *                       example: true
+ *               policies:
+ *                 type: object
+ *                 properties:
+ *                   cancellation:
+ *                     type: string
+ *                     enum: [flexible, moderate, strict]
+ *                     example: "moderate"
+ *                   checkIn:
+ *                     type: string
+ *                     example: "3:00 PM"
+ *                   checkOut:
+ *                     type: string
+ *                     example: "11:00 AM"
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
  *     responses:
  *       201:
  *         description: Property created successfully
@@ -195,7 +259,7 @@ router.get('/:id', validateObjectId, getPropertyById);
  *       500:
  *         description: Server error
  */
-router.post('/', validateProperty, createProperty);
+router.post('/', validateProperty, validateOwnerExists, createProperty);
 
 /**
  * @swagger
@@ -216,7 +280,83 @@ router.post('/', validateProperty, createProperty);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Property'
+ *             type: object
+ *             properties:
+ *               ownerId:
+ *                 type: string
+ *                 example: "64fd1939c0eecb32c9af77b1"
+ *               name:
+ *                 type: string
+ *                 example: "Updated Resort Name"
+ *               description:
+ *                 type: string
+ *                 example: "Updated description"
+ *               address:
+ *                 type: object
+ *                 properties:
+ *                   city:
+ *                     type: string
+ *                     example: "Miami"
+ *                   state:
+ *                     type: string
+ *                     example: "Florida"
+ *                   country:
+ *                     type: string
+ *                     example: "USA"
+ *                   coords:
+ *                     type: object
+ *                     properties:
+ *                       lat:
+ *                         type: number
+ *                         example: 25.7617
+ *                       lng:
+ *                         type: number
+ *                         example: -80.1918
+ *               amenities:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["pool", "wifi", "gym", "spa"]
+ *               rooms:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     roomId:
+ *                       type: string
+ *                       example: "BEACH001"
+ *                     type:
+ *                       type: string
+ *                       example: "double"
+ *                     capacity:
+ *                       type: integer
+ *                       example: 2
+ *                     pricePerNight:
+ *                       type: number
+ *                       example: 229.99
+ *                     images:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["room1.jpg", "room2.jpg"]
+ *                     isAvailable:
+ *                       type: boolean
+ *                       example: true
+ *               policies:
+ *                 type: object
+ *                 properties:
+ *                   cancellation:
+ *                     type: string
+ *                     example: "moderate"
+ *                   checkIn:
+ *                     type: string
+ *                     example: "3:00 PM"
+ *                   checkOut:
+ *                     type: string
+ *                     example: "11:00 AM"
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
  *     responses:
  *       200:
  *         description: Property updated successfully
@@ -240,13 +380,14 @@ router.post('/', validateProperty, createProperty);
  *       500:
  *         description: Server error
  */
+
 router.put('/:id', validateObjectId, validateProperty, updateProperty);
 
 /**
  * @swagger
  * /api/properties/{id}:
  *   delete:
- *     summary: Delete property (soft delete)
+ *     summary: Delete property (soft delete by setting isActive to false)
  *     tags: [Properties]
  *     parameters:
  *       - in: path

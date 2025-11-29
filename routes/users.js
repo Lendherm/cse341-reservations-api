@@ -7,7 +7,13 @@ const {
   updateUser,
   deleteUser
 } = require('../controllers/usersController');
-const { validateUser, validateObjectId } = require('../middleware/validation');
+
+const { 
+  validateUser, 
+  validateUserUpdate,
+  validateObjectId 
+} = require('../middleware/validation');
+
 
 /**
  * @swagger
@@ -240,7 +246,9 @@ router.post('/', validateUser, createUser);
  *       500:
  *         description: Server error
  */
-router.put('/:id', validateObjectId, validateUser, updateUser);
+router.put('/:id', validateObjectId, validateUserUpdate, updateUser);
+
+
 
 /**
  * @swagger

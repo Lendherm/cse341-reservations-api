@@ -43,14 +43,14 @@ const getUserById = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id)
       .select('-passwordHash');
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    
+
     res.json({
       success: true,
       data: user
@@ -64,7 +64,7 @@ const getUserById = async (req, res, next) => {
 const createUser = async (req, res, next) => {
   try {
     const { name, email, passwordHash, phone, role } = req.body;
-    
+
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -73,7 +73,7 @@ const createUser = async (req, res, next) => {
         message: 'User with this email already exists'
       });
     }
-    
+
     const user = new User({
       name: name.trim(),
       email: email.toLowerCase().trim(),
@@ -81,9 +81,9 @@ const createUser = async (req, res, next) => {
       phone: phone ? phone.trim() : undefined,
       role
     });
-    
+
     const savedUser = await user.save();
-    
+
     res.status(201).json({
       success: true,
       message: 'User created successfully',
@@ -98,39 +98,39 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { name, email, phone, role } = req.body;
-    
-    // Don't allow password updates through this endpoint
+
+    // Prevent password change here
     if (req.body.passwordHash) {
       return res.status(400).json({
         success: false,
         message: 'Use dedicated password update endpoint for password changes'
       });
     }
-    
+
     const updateData = {
       ...(name && { name: name.trim() }),
       ...(email && { email: email.toLowerCase().trim() }),
       ...(phone && { phone: phone.trim() }),
       ...(role && { role })
     };
-    
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       updateData,
-      { 
-        new: true, 
-        runValidators: true,
+      {
+        new: true,
+        runValidators: false, // ⬅️ IMPORTANT FIX
         context: 'query'
       }
     ).select('-passwordHash');
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'User updated successfully',
@@ -145,14 +145,14 @@ const updateUser = async (req, res, next) => {
 const deleteUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'User deleted successfully',
