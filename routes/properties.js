@@ -284,13 +284,13 @@ router.post('/', validateProperty, validateOwnerExists, createProperty);
  *             properties:
  *               ownerId:
  *                 type: string
- *                 example: "64fd1939c0eecb32c9af77b1"
+ *                 example: "650a1b2c3d4e5f0012345678"
  *               name:
  *                 type: string
- *                 example: "Updated Resort Name"
+ *                 example: "Luxury Beach Resort"
  *               description:
  *                 type: string
- *                 example: "Updated description"
+ *                 example: "A beautiful resort with stunning ocean views"
  *               address:
  *                 type: object
  *                 properties:
@@ -316,7 +316,7 @@ router.post('/', validateProperty, validateOwnerExists, createProperty);
  *                 type: array
  *                 items:
  *                   type: string
- *                 example: ["pool", "wifi", "gym", "spa"]
+ *                 example: ["pool", "wifi", "gym"]
  *               rooms:
  *                 type: array
  *                 items:
@@ -333,12 +333,12 @@ router.post('/', validateProperty, validateOwnerExists, createProperty);
  *                       example: 2
  *                     pricePerNight:
  *                       type: number
- *                       example: 229.99
+ *                       example: 199.99
  *                     images:
  *                       type: array
  *                       items:
  *                         type: string
- *                       example: ["room1.jpg", "room2.jpg"]
+ *                       example: ["room1.jpg"]
  *                     isAvailable:
  *                       type: boolean
  *                       example: true
