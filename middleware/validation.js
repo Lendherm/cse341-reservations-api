@@ -14,16 +14,17 @@ const validateObjectId = (req, res, next) => {
   next();
 };
 
-// -----------------------------
+
+
 // Validate Create User (POST)
 // -----------------------------
 const validateUser = (req, res, next) => {
   const schema = Joi.object({
     name: Joi.string().min(2).max(100).required(),
     email: Joi.string().email().required(),
-    phone: Joi.string().min(8).max(20).required(),
-    role: Joi.string().valid("user", "admin", "provider").required(),
-    password: Joi.string().min(6).required()  // Only for CREATE
+    phone: Joi.string().min(8).max(20).optional(),
+    role: Joi.string().valid("user", "admin", "provider").default("user"),
+    passwordHash: Joi.string().min(6).required()  // Changed to match model
   });
 
   const { error } = schema.validate(req.body, { abortEarly: false });
@@ -38,7 +39,6 @@ const validateUser = (req, res, next) => {
 
   next();
 };
-
 // -----------------------------
 // Validate Update User (PUT)
 // -----------------------------
