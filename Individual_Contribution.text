@@ -1,0 +1,109 @@
+Individual Contribution Documentation
+
+For this project, I have made significant contributions across multiple areas of the Reservations API system. Below are two primary individual contributions that demonstrate my ownership and implementation of key system components:
+
+Contribution 1: Comprehensive API Documentation System with Swagger/OpenAPI
+Files Modified/Created:
+
+swagger.js (completely implemented)
+
+routes/users.js (added Swagger annotations)
+
+routes/properties.js (added Swagger annotations)
+
+Integrated with server.js
+
+Specific Contributions:
+
+Designed and implemented the complete Swagger/OpenAPI documentation infrastructure:
+
+Created a centralized swagger.js configuration with comprehensive API definitions
+
+Implemented detailed schema definitions for all data models (User, Property, Reservation, Error responses)
+
+Configured multiple server environments (production Render, local development)
+
+Added authentication scheme documentation for JWT bearer tokens
+
+Created reusable component definitions for common patterns (Pagination, SuccessResponse, Error responses)
+
+Added comprehensive inline documentation for all API endpoints:
+
+Documented all user management endpoints (GET /api/users, POST /api/users, etc.) with full parameter descriptions, request/response schemas, and error cases
+
+Documented all property management endpoints with advanced filtering parameters (city, country, price range, capacity)
+
+Included realistic examples for all request/response payloads
+
+Added proper HTTP status code documentation for success and error scenarios
+
+Implemented production-ready features:
+
+Added custom CSS for branded API documentation interface
+
+Configured proper error response schemas for 400, 401, 404, 409, and 500 status codes
+
+Set up tags for organized endpoint grouping (Users, Properties, Authentication, Reservations)
+
+Added health check and root endpoint documentation
+
+Impact: This contribution provides complete, professional-grade API documentation that enables other developers to understand and use the API without external guidance. The interactive Swagger UI at /api-docs serves as both documentation and testing interface.
+
+Contribution 2: User Management System with Validation and Error Handling
+Files Modified/Created:
+
+models/User.js (complete schema design)
+
+controllers/usersController.js (full CRUD implementation)
+
+middleware/validation.js (user validation logic)
+
+routes/users.js (route definitions)
+
+Specific Contributions:
+
+Designed and implemented the complete User data model:
+
+Created comprehensive Mongoose schema with proper validation rules
+
+Implemented virtual fields (displayName) and instance methods (isAdmin(), isProvider())
+
+Added proper indexing for query performance optimization
+
+Implemented secure password handling with select: false to prevent accidental exposure
+
+Added static methods for common queries (findByEmail)
+
+Built full CRUD operations with advanced features:
+
+Implemented paginated user listing with filtering by role
+
+Created robust error handling for all edge cases (duplicate emails, invalid IDs)
+
+Added proper population and data transformation
+
+Implemented separate validation schemas for creation vs. updates (preventing password updates via regular update endpoint)
+
+Developed comprehensive validation middleware:
+
+Created Joi validation schemas for user creation and updates
+
+Implemented MongoDB ObjectId validation middleware
+
+Added proper error messaging for validation failures
+
+Ensured data consistency across create/update operations
+
+Implemented security best practices:
+
+Automatic password hash exclusion from API responses
+
+Email normalization (lowercase, trim) to prevent duplicate entries
+
+Role-based validation with enum restrictions
+
+Phone number format validation
+
+Impact: This contribution provides a robust, secure, and scalable user management system that forms the foundation for the entire application's authentication and authorization system. The implementation follows RESTful best practices and includes proper error handling for production use.
+
+Summary: These two contributions demonstrate significant individual ownership of critical system components. The API documentation system provides essential developer tooling and interface definition, while the user management system implements core business logic with proper validation, security, and error handling. Both contributions are comprehensive, production-ready implementations that form essential parts of the overall application architecture.
