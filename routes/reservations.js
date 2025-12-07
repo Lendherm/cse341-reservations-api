@@ -7,7 +7,7 @@ const {
   updateReservation,
   deleteReservation
 } = require('../controllers/reservationsController');
-const { validateReservation, validateObjectId } = require('../middleware/validation');
+const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
 const { ensureAuthenticated, ensureAdmin } = require('../middleware/auth');
 
 /**
@@ -188,7 +188,7 @@ router.get('/:id', validateObjectId, getReservationById);
  *       500:
  *         description: Server error
  */
-router.post('/', ensureAuthenticated, validateReservation, createReservation);
+router.post('/', ensureAuthenticated, validateReservationCreate, createReservation);
 
 /**
  * @swagger
@@ -249,7 +249,7 @@ router.post('/', ensureAuthenticated, validateReservation, createReservation);
  *       500:
  *         description: Server error
  */
-router.put('/:id', ensureAuthenticated, validateObjectId, validateReservation, updateReservation);
+router.put('/:id', ensureAuthenticated, validateObjectId, validateReservationUpdate, updateReservation);
 
 /**
  * @swagger

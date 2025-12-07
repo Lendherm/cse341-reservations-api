@@ -7,7 +7,8 @@ const {
   updateVehicle,
   deleteVehicle
 } = require('../controllers/vehiclesController');
-const { validateVehicle, validateObjectId } = require('../middleware/validation');
+// Updated imports for separate validation
+const { validateVehicleCreate, validateVehicleUpdate, validateObjectId } = require('../middleware/validation');
 
 /**
  * @swagger
@@ -156,7 +157,8 @@ router.get('/:id', validateObjectId, getVehicleById);
  *       500:
  *         description: Server error
  */
-router.post('/', validateVehicle, createVehicle);
+// Changed to validateVehicleCreate
+router.post('/', validateVehicleCreate, createVehicle);
 
 /**
  * @swagger
@@ -204,7 +206,8 @@ router.post('/', validateVehicle, createVehicle);
  *       500:
  *         description: Server error
  */
-router.put('/:id', validateObjectId, validateVehicle, updateVehicle);
+// Changed to validateVehicleUpdate
+router.put('/:id', validateObjectId, validateVehicleUpdate, updateVehicle);
 
 /**
  * @swagger

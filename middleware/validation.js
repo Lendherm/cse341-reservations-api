@@ -121,9 +121,9 @@ const validateProperty = (req, res, next) => {
 };
 
 // -----------------------------
-// Validate Reservation
+// Validate Reservation CREATE (POST)
 // -----------------------------
-const validateReservation = (req, res, next) => {
+const validateReservationCreate = (req, res, next) => {
   const schema = Joi.object({
     userId: Joi.string().required(),
     propertyId: Joi.string().required(),
@@ -132,9 +132,7 @@ const validateReservation = (req, res, next) => {
     endDate: Joi.date().greater(Joi.ref('startDate')).required(),
     numGuests: Joi.number().integer().min(1).required(),
     totalAmount: Joi.number().min(0).required(),
-    status: Joi.string().valid('pending', 'confirmed', 'cancelled', 'completed'),
-    paymentStatus: Joi.string().valid('pending', 'paid', 'refunded', 'failed'),
-    specialRequests: Joi.string().max(500)
+    specialRequests: Joi.string().max(500).allow(''),
   });
 
   const { error } = schema.validate(req.body, { abortEarly: false });
@@ -151,28 +149,87 @@ const validateReservation = (req, res, next) => {
 };
 
 // -----------------------------
-// Validate Vehicle
+// Validate Reservation UPDATE (PUT)
 // -----------------------------
-const validateVehicle = (req, res, next) => {
+const validateReservationUpdate = (req, res, next) => {
+  const schema = Joi.object({
+    status: Joi.string().valid('pending', 'confirmed', 'cancelled', 'completed'),
+    paymentStatus: Joi.string().valid('pending', 'paid', 'refunded', 'failed'),
+    specialRequests: Joi.string().max(500).allow(''),
+  }).min(1); // At least one field required.
+
+  const { error } = schema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: error.details.map(d => d.message)
+    });
+  }
+
+  next();
+};
+
+// -----------------------------
+// Validate Vehicle CREATE (POST)
+// -----------------------------
+const validateVehicleCreate = (req, res, next) => {
   const schema = Joi.object({
     providerId: Joi.string().required(),
     make: Joi.string().required(),
     model: Joi.string().required(),
     year: Joi.number().integer().min(2000).max(new Date().getFullYear() + 1).required(),
     type: Joi.string().valid('sedan', 'suv', 'van', 'luxury', 'economy').required(),
-    transmission: Joi.string().valid('automatic', 'manual'),
+    transmission: Joi.string().valid('automatic', 'manual').optional(),
     seats: Joi.number().integer().min(2).max(15).required(),
     pricePerDay: Joi.number().min(0).required(),
-    fuelType: Joi.string().valid('gasoline', 'diesel', 'electric', 'hybrid'),
+    fuelType: Joi.string().valid('gasoline', 'diesel', 'electric', 'hybrid').optional(),
     location: Joi.object({
       city: Joi.string().required(),
-      airportCode: Joi.string().uppercase().trim()
+      airportCode: Joi.string().uppercase().trim().optional()
     }).required(),
-    features: Joi.array().items(Joi.string()),
-    isAvailable: Joi.boolean(),
+    features: Joi.array().items(Joi.string()).optional(),
+    isAvailable: Joi.boolean().optional().default(true),
     licensePlate: Joi.string().required(),
-    images: Joi.array().items(Joi.string())
+    images: Joi.array().items(Joi.string()).optional()
   });
+
+  const { error } = schema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: error.details.map(d => d.message)
+    });
+  }
+
+  next();
+};
+
+// -----------------------------
+// Validate Vehicle UPDATE (PUT)
+// -----------------------------
+const validateVehicleUpdate = (req, res, next) => {
+  const schema = Joi.object({
+    make: Joi.string().optional(),
+    model: Joi.string().optional(),
+    year: Joi.number().integer().min(2000).max(new Date().getFullYear() + 1).optional(),
+    type: Joi.string().valid('sedan', 'suv', 'van', 'luxury', 'economy').optional(),
+    transmission: Joi.string().valid('automatic', 'manual').optional(),
+    seats: Joi.number().integer().min(2).max(15).optional(),
+    pricePerDay: Joi.number().min(0).optional(),
+    fuelType: Joi.string().valid('gasoline', 'diesel', 'electric', 'hybrid').optional(),
+    location: Joi.object({
+      city: Joi.string().optional(),
+      airportCode: Joi.string().uppercase().trim().optional()
+    }).optional(),
+    features: Joi.array().items(Joi.string()).optional(),
+    isAvailable: Joi.boolean().optional(),
+    licensePlate: Joi.string().optional(), // Usually not changed, but allowed
+    images: Joi.array().items(Joi.string()).optional()
+  }).min(1); // At least one field required for update
 
   const { error } = schema.validate(req.body, { abortEarly: false });
 
@@ -194,7 +251,9 @@ module.exports = {
   validateUser,
   validateUserUpdate,
   validateProperty,
-  validateReservation,
-  validateVehicle,
+  validateReservationCreate,
+  validateReservationUpdate,
+  validateVehicleCreate,    // Changed from validateVehicle
+  validateVehicleUpdate,    // New
   validateObjectId
 };
