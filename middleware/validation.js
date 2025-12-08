@@ -153,10 +153,21 @@ const validateReservationCreate = (req, res, next) => {
 // -----------------------------
 const validateReservationUpdate = (req, res, next) => {
   const schema = Joi.object({
+    userId: Joi.string(),
+    propertyId: Joi.string(),
+    resourceId: Joi.string(),
+    reservationType: Joi.string(),
+    roomId: Joi.string(),
+    startDate: Joi.date(),
+    endDate: Joi.date().greater(Joi.ref('startDate')),
+    numGuests: Joi.number().integer().min(1),
+    totalAmount: Joi.number().min(0),
     status: Joi.string().valid('pending', 'confirmed', 'cancelled', 'completed'),
     paymentStatus: Joi.string().valid('pending', 'paid', 'refunded', 'failed'),
     specialRequests: Joi.string().max(500).allow(''),
-  }).min(1); // At least one field required.
+  })
+    .min(1)
+    .unknown(true); // <-- PERMITE CAMPOS NO ENUMERADOS
 
   const { error } = schema.validate(req.body, { abortEarly: false });
 
@@ -170,6 +181,7 @@ const validateReservationUpdate = (req, res, next) => {
 
   next();
 };
+
 
 // -----------------------------
 // Validate Vehicle CREATE (POST)
