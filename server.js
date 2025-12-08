@@ -2,18 +2,16 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');  // VERSIÓN 6.x - API diferente
 const passport = require('passport');
 const GitHubStrategy = require('passport-github2').Strategy;
 require('dotenv').config();
 
-// Para connect-mongo v6.x
-const MongoStore = require('connect-mongo');
-
 const { specs, swaggerUi } = require('./swagger');
 const errorHandler = require('./middleware/errorHandler');
 
-// Import models - TODAS LAS RUTAS CORREGIDAS
-const User = require('./models/User');  // CORREGIDO: de '../models/User' a './models/User'
+// Import models
+const User = require('./models/User');
 
 const app = express();
 
@@ -36,7 +34,7 @@ app.use(cors({
       'http://localhost:8080'
     ];
     
-    // Permitir solicitudes sin origen (como curl, postman)
+    // Permitir solicitudes sin origen
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin)) {
@@ -55,12 +53,14 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Configuración de sesiones para connect-mongo v6
+// ¡¡¡IMPORTANTE!!! Configuración CORRECTA para connect-mongo v6.x
+// En v6.x, MongoStore.create() NO ES UNA FUNCIÓN
+// En su lugar, se pasa directamente como store
 app.use(session({
   secret: process.env.SESSION_SECRET || 'default-secret-change-this-in-production',
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({
+  store: MongoStore.create({  // ¡SÍ es una función en v6.x!
     mongoUrl: process.env.MONGODB_URI,
     collectionName: 'sessions',
     ttl: 14 * 24 * 60 * 60, // 14 días en segundos
@@ -92,8 +92,6 @@ if (process.env.NODE_ENV !== 'test') {
   mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
   })
   .then(() => {
     console.log('✅ Connected to MongoDB');
