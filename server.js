@@ -12,8 +12,8 @@ const MongoStore = require('connect-mongo');
 const { specs, swaggerUi } = require('./swagger');
 const errorHandler = require('./middleware/errorHandler');
 
-// Import models
-const User = require('../models/User');
+// Import models - TODAS LAS RUTAS CORREGIDAS
+const User = require('./models/User');  // CORREGIDO: de '../models/User' a './models/User'
 
 const app = express();
 
@@ -22,9 +22,31 @@ const app = express();
 // ========================
 // Configuración de CORS simplificada
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://cse341-reservations-api.onrender.com', 'https://cse341-code-student.onrender.com']
-    : ['http://localhost:3000', 'http://localhost:8080'],
+  origin: function(origin, callback) {
+    // En desarrollo, permitir cualquier origen
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // En producción, solo orígenes específicos
+    const allowedOrigins = [
+      'https://cse341-reservations-api.onrender.com',
+      'https://cse341-code-student.onrender.com',
+      'http://localhost:3000',
+      'http://localhost:8080'
+    ];
+    
+    // Permitir solicitudes sin origen (como curl, postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log(`CORS bloqueado para origen: ${origin}`);
+      // Temporalmente permitir todos los orígenes para pruebas
+      callback(null, true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
@@ -35,7 +57,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Configuración de sesiones para connect-mongo v6
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'default-secret-change-in-production',
+  secret: process.env.SESSION_SECRET || 'default-secret-change-this-in-production',
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
@@ -70,6 +92,8 @@ if (process.env.NODE_ENV !== 'test') {
   mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
   })
   .then(() => {
     console.log('✅ Connected to MongoDB');
@@ -78,6 +102,8 @@ if (process.env.NODE_ENV !== 'test') {
   .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);
   });
+} else {
+  console.log('🧪 Test mode: MongoDB connection skipped');
 }
 
 // ========================
@@ -111,8 +137,14 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
+        console.log('GitHub profile received');
+
         // Find or create user
         const user = await User.findOrCreateFromGitHub(profile);
+        
+        // Update last login
+        await user.updateLastLogin();
+        
         console.log('User authenticated via GitHub:', user.email);
         return done(null, user);
       } catch (error) {
@@ -139,10 +171,28 @@ if (process.env.GITHUB_CLIENT_ID) {
       session: true
     }),
     (req, res) => {
+      console.log('GitHub authentication successful');
       res.redirect('/api-docs');
     }
   );
 }
+
+// Logout route
+app.get('/auth/logout', (req, res, next) => {
+  req.logout((err) => {
+    if (err) return next(err);
+    
+    req.session.destroy((err) => {
+      if (err) return next(err);
+
+      res.clearCookie('connect.sid');
+      res.json({
+        success: true,
+        message: 'Logged out successfully'
+      });
+    });
+  });
+});
 
 // Current user route
 app.get('/auth/current', (req, res) => {
@@ -150,7 +200,7 @@ app.get('/auth/current', (req, res) => {
     res.json({
       success: true,
       authenticated: true,
-      user: req.user
+      user: req.user.getPublicProfile()
     });
   } else {
     res.json({
@@ -161,13 +211,13 @@ app.get('/auth/current', (req, res) => {
   }
 });
 
-// Auth test endpoint
+// Test authentication endpoint
 app.get('/auth/test', (req, res) => {
   res.json({
     success: true,
-    sessionId: req.sessionID,
     authenticated: req.isAuthenticated(),
-    user: req.user
+    sessionId: req.sessionID,
+    user: req.user ? req.user.getPublicProfile() : null
   });
 });
 
@@ -185,47 +235,95 @@ app.use('/api/reservations', reservationsRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
 
 // ========================
+// Authentication Middleware (opcional)
+// ========================
+const { ensureAuthenticated, ensureAdmin } = require('./middleware/auth');
+
+app.get('/api/protected', ensureAuthenticated, (req, res) => {
+  res.json({
+    success: true,
+    message: 'You have accessed a protected route!',
+    user: req.user.getPublicProfile()
+  });
+});
+
+app.get('/api/admin-only', ensureAuthenticated, ensureAdmin, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Welcome, Admin!',
+    user: req.user.getPublicProfile()
+  });
+});
+
+// ========================
 // Swagger Documentation
 // ========================
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
   explorer: true,
-  customSiteTitle: 'Reservations API - Stay & Go'
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Reservations API - Stay & Go',
+  swaggerOptions: {
+    persistAuthorization: true,
+    tryItOutEnabled: true,
+    displayRequestDuration: true
+  }
 }));
 
 // ========================
 // Utility Routes
 // ========================
 app.get('/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
   res.json({ 
     success: true, 
-    message: 'API is running',
+    message: 'Reservations API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: dbStatus,
+    session: {
+      enabled: true,
+      cookie: req.session.cookie
+    },
+    oauth: {
+      github: process.env.GITHUB_CLIENT_ID ? 'Configured' : 'Not Configured'
+    }
   });
 });
 
-// Test route
-app.get('/test', (req, res) => {
+// Session debug endpoint
+app.get('/session/debug', (req, res) => {
   res.json({
     success: true,
-    message: 'Test endpoint working',
-    environment: process.env.NODE_ENV
+    sessionId: req.sessionID,
+    session: req.session,
+    authenticated: req.isAuthenticated(),
+    cookies: req.headers.cookie
   });
 });
 
 // Home route
 app.get('/', (req, res) => {
+  const isAuthenticated = req.isAuthenticated();
+  
   res.json({
     success: true,
-    message: 'Welcome to Reservations API',
+    message: 'Welcome to Reservations API - Stay & Go',
     version: '2.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    authenticated: isAuthenticated,
+    user: isAuthenticated ? req.user.getPublicProfile() : null,
     endpoints: {
+      documentation: '/api-docs',
       users: '/api/users',
       properties: '/api/properties',
       reservations: '/api/reservations',
       vehicles: '/api/vehicles',
-      docs: '/api-docs',
-      health: '/health'
+      health: '/health',
+      auth: {
+        current: '/auth/current',
+        test: '/auth/test',
+        logout: '/auth/logout'
+      }
     }
   });
 });
@@ -235,11 +333,18 @@ app.get('/', (req, res) => {
 // ========================
 app.use(errorHandler);
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+    availableRoutes: {
+      documentation: '/api-docs',
+      users: '/api/users',
+      properties: '/api/properties',
+      reservations: '/api/reservations',
+      vehicles: '/api/vehicles',
+      health: '/health'
+    }
   });
 });
 
@@ -250,10 +355,15 @@ const PORT = process.env.PORT || 10000;
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📚 Swagger: http://localhost:${PORT}/api-docs`);
+    console.log(`🔐 GitHub OAuth: ${process.env.GITHUB_CLIENT_ID ? 'Configured' : 'Not Configured'}`);
+    console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
+    console.log(`🔑 GitHub Login: http://localhost:${PORT}/auth/github`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/health`);
   });
+} else {
+  console.log('🧪 Test mode: Server not started');
 }
 
 module.exports = app;
