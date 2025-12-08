@@ -202,7 +202,7 @@ router.post('/', authMiddleware, validateReservationCreate, createReservation);
 /**
  * @swagger
  * /api/reservations/{id}:
- * put:
+ * put: //
  * summary: Update a reservation by ID
  * tags: [Reservations]
  * security:
@@ -246,7 +246,7 @@ router.post('/', authMiddleware, validateReservationCreate, createReservation);
  * $ref: '#/components/responses/NotFound'
  * x-controller: updateReservation
  */
-router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation); 
+router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation);
 
 /**
  * @swagger
