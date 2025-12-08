@@ -246,7 +246,7 @@ router.post('/', authMiddleware, validateReservationCreate, createReservation);
  * $ref: '#/components/responses/NotFound'
  * x-controller: updateReservation
  */
-router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation); // <-- Asegúrate de que esta línea exista
+router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation); 
 
 /**
  * @swagger
