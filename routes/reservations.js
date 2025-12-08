@@ -202,50 +202,50 @@ router.post('/', authMiddleware, validateReservationCreate, createReservation);
 /**
  * @swagger
  * /api/reservations/{id}:
- * put: //
- * summary: Update a reservation by ID
- * tags: [Reservations]
- * security:
- * - bearerAuth: []
- * parameters:
- * - in: path
- * name: id
- * required: true
- * schema:
- * type: string
- * pattern: "^[0-9a-fA-F]{24}$"
- * description: MongoDB ObjectId of the reservation to update
- * requestBody: 
- * required: true
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/Reservation'
- * example:
- * userId: "650a1b2c3d4e5f0012345678"
- * reservationType: "accommodation"
- * resourceId: "650a1b2c3d4e5f0012345679"
- * roomId: "BEACH001"
- * startDate: "2024-12-20"
- * endDate: "2024-12-25"
- * numGuests: 2
- * totalAmount: 999.95
- * status: "confirmed"
- * responses:
- * 200:
- * description: Reservation updated successfully
- * content:
- * application/json:
- * schema:
- * $ref: '#/components/schemas/Reservation'
- * 400:
- * $ref: '#/components/responses/ValidationError'
- * 401:
- * $ref: '#/components/responses/Unauthorized'
- * 404:
- * $ref: '#/components/responses/NotFound'
- * x-controller: updateReservation
+ *   put:
+ *     summary: Update a reservation by ID
+ *     tags: [Reservations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: "^[0-9a-fA-F]{24}$"
+ *         description: MongoDB ObjectId of the reservation to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Reservation'
+ *           example:
+ *             userId: "650a1b2c3d4e5f0012345678"
+ *             reservationType: "accommodation"
+ *             resourceId: "650a1b2c3d4e5f0012345679"
+ *             roomId: "BEACH001"
+ *             startDate: "2024-12-20"
+ *             endDate: "2024-12-25"
+ *             numGuests: 2
+ *             totalAmount: 999.95
+ *             status: "confirmed"
+ *     responses:
+ *       200:
+ *         description: Reservation updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Reservation'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
+
 router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation);
 
 /**
