@@ -9,9 +9,24 @@ const {
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
 
-// Middleware simple de autenticación
+// Middleware simplificado - PERMITIR SIN AUTENTICACIÓN TEMPORALMENTE
 const authMiddleware = (req, res, next) => {
-  // EN DESARROLLO: Permitir siempre
+  // TEMPORALMENTE: Permitir siempre sin autenticación
+  console.log('🔓 Authentication bypassed for testing');
+  req.user = {
+    _id: '650a1b2c3d4e5f0012345678',
+    role: 'user',
+    getPublicProfile: function() {
+      return {
+        id: this._id,
+        role: this.role
+      };
+    }
+  };
+  return next();
+  
+  // Si quieres mantener autenticación en producción, descomenta esto:
+  /*
   if (process.env.NODE_ENV !== 'production') {
     console.log('🔓 Development mode - authentication bypassed');
     req.user = {
@@ -27,14 +42,18 @@ const authMiddleware = (req, res, next) => {
     return next();
   }
   
-  // EN PRODUCCIÓN: Verificar autenticación básica
-  // Esto es temporal - deberías implementar OAuth/JWT en producción
+  // EN PRODUCCIÓN: Verificar si hay sesión (GitHub OAuth)
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  
+  // Si no hay sesión, verificar header de autorización
   const authHeader = req.headers.authorization;
   
   if (!authHeader) {
     return res.status(401).json({
       success: false,
-      message: 'Authorization header required'
+      message: 'Authentication required. Please login via GitHub OAuth or provide Authorization header'
     });
   }
   
@@ -51,6 +70,7 @@ const authMiddleware = (req, res, next) => {
     success: false,
     message: 'Invalid token. Use: Bearer test-token-123'
   });
+  */
 };
 
 /**
@@ -64,8 +84,39 @@ const authMiddleware = (req, res, next) => {
  * @swagger
  * /api/reservations:
  *   get:
- *     summary: Get all reservations
+ *     summary: Get all reservations with filters
  *     tags: [Reservations]
+ *     parameters:
+ *       - $ref: '#/components/parameters/pageParam'
+ *       - $ref: '#/components/parameters/limitParam'
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         description: Filter by user ID
+ *       - in: query
+ *         name: propertyId
+ *         schema:
+ *           type: string
+ *         description: Filter by property ID
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, confirmed, cancelled, completed]
+ *         description: Filter by status
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter by start date (YYYY-MM-DD)
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter by end date (YYYY-MM-DD)
  *     responses:
  *       200:
  *         description: List of reservations
@@ -84,6 +135,8 @@ router.get('/', getAllReservations);
  *         required: true
  *         schema:
  *           type: string
+ *           pattern: '^[0-9a-fA-F]{24}$'
+ *         description: Valid MongoDB ObjectId
  *     responses:
  *       200:
  *         description: Reservation details
@@ -96,8 +149,9 @@ router.get('/:id', validateObjectId, getReservationById);
  *   post:
  *     summary: Create a new reservation
  *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Create a new reservation. 
+ *       Note: Authentication is temporarily disabled for testing.
  *     requestBody:
  *       required: true
  *       content:
@@ -157,9 +211,11 @@ router.post('/', authMiddleware, validateReservationCreate, createReservation);
  *         required: true
  *         schema:
  *           type: string
+ *           pattern: '^[0-9a-fA-F]{24}$'
+ *         description: Valid MongoDB ObjectId
  *     responses:
  *       200:
- *         description: Reservation updated
+ *         description: Reservation updated successfully
  */
 router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation);
 
@@ -175,9 +231,11 @@ router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, 
  *         required: true
  *         schema:
  *           type: string
+ *           pattern: '^[0-9a-fA-F]{24}$'
+ *         description: Valid MongoDB ObjectId
  *     responses:
  *       200:
- *         description: Reservation deleted
+ *         description: Reservation deleted successfully
  */
 router.delete('/:id', authMiddleware, validateObjectId, deleteReservation);
 
