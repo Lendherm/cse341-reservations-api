@@ -9,22 +9,17 @@ const {
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
 
-// Middleware temporal para pruebas en desarrollo
-const developmentAuth = (req, res, next) => {
-  // Si estamos en desarrollo, permitir sin autenticación
+// Middleware simple de autenticación
+const authMiddleware = (req, res, next) => {
+  // EN DESARROLLO: Permitir siempre
   if (process.env.NODE_ENV !== 'production') {
-    console.log('⚠️ Development mode: Bypassing authentication');
-    
-    // Mock user para desarrollo
+    console.log('🔓 Development mode - authentication bypassed');
     req.user = {
       _id: '650a1b2c3d4e5f0012345678',
       role: 'user',
-      email: 'dev-user@example.com',
       getPublicProfile: function() {
         return {
           id: this._id,
-          name: 'Dev User',
-          email: this.email,
           role: this.role
         };
       }
@@ -32,45 +27,30 @@ const developmentAuth = (req, res, next) => {
     return next();
   }
   
-  // En producción, usar autenticación real
-  if (!req.isAuthenticated()) {
+  // EN PRODUCCIÓN: Verificar autenticación básica
+  // Esto es temporal - deberías implementar OAuth/JWT en producción
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader) {
     return res.status(401).json({
       success: false,
-      message: 'Authentication required. Please log in to access this resource. Visit /auth/github to login.'
+      message: 'Authorization header required'
     });
   }
   
-  next();
-};
-
-// Middleware temporal para admin en desarrollo
-const developmentAdminAuth = (req, res, next) => {
-  // Si estamos en desarrollo, permitir sin autenticación
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('⚠️ Development mode: Bypassing admin authentication');
+  // Token simple temporal
+  if (authHeader === 'Bearer test-token-123') {
     req.user = {
       _id: '650a1b2c3d4e5f0012345678',
-      role: 'admin'
+      role: 'user'
     };
     return next();
   }
   
-  // En producción, verificar autenticación y rol admin
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({
-      success: false,
-      message: 'Authentication required. Please log in to access this resource.'
-    });
-  }
-  
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({
-      success: false,
-      message: 'Admin access required.'
-    });
-  }
-  
-  next();
+  return res.status(401).json({
+    success: false,
+    message: 'Invalid token. Use: Bearer test-token-123'
+  });
 };
 
 /**
@@ -84,60 +64,11 @@ const developmentAdminAuth = (req, res, next) => {
  * @swagger
  * /api/reservations:
  *   get:
- *     summary: Get all reservations with filters
+ *     summary: Get all reservations
  *     tags: [Reservations]
- *     parameters:
- *       - $ref: '#/components/parameters/pageParam'
- *       - $ref: '#/components/parameters/limitParam'
- *       - in: query
- *         name: userId
- *         schema:
- *           type: string
- *         description: Filter by user ID
- *       - in: query
- *         name: propertyId
- *         schema:
- *           type: string
- *         description: Filter by property ID
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [pending, confirmed, cancelled, completed]
- *         description: Filter by status
- *       - in: query
- *         name: startDate
- *         schema:
- *           type: string
- *           format: date
- *         description: Filter by start date (YYYY-MM-DD)
- *       - in: query
- *         name: endDate
- *         schema:
- *           type: string
- *           format: date
- *         description: Filter by end date (YYYY-MM-DD)
  *     responses:
  *       200:
  *         description: List of reservations
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 count:
- *                   type: integer
- *                 pagination:
- *                   $ref: '#/components/schemas/Pagination'
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Reservation'
- *       500:
- *         description: Server error
  */
 router.get('/', getAllReservations);
 
@@ -153,27 +84,9 @@ router.get('/', getAllReservations);
  *         required: true
  *         schema:
  *           type: string
- *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
  *     responses:
  *       200:
  *         description: Reservation details
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   $ref: '#/components/schemas/Reservation'
- *       400:
- *         description: Invalid ID format
- *       404:
- *         description: Reservation not found
- *       500:
- *         description: Server error
  */
 router.get('/:id', validateObjectId, getReservationById);
 
@@ -183,10 +96,8 @@ router.get('/:id', validateObjectId, getReservationById);
  *   post:
  *     summary: Create a new reservation
  *     tags: [Reservations]
- *     description: |
- *       Create a new reservation. 
- *       Note: In development mode, no authentication is required.
- *       In production, you must be logged in via GitHub OAuth.
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -231,29 +142,8 @@ router.get('/:id', validateObjectId, getReservationById);
  *     responses:
  *       201:
  *         description: Reservation created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Reservation created successfully
- *                 data:
- *                   $ref: '#/components/schemas/Reservation'
- *       400:
- *         description: Validation error
- *       401:
- *         description: Authentication required (production only)
- *       409:
- *         description: Room not available for selected dates
- *       500:
- *         description: Server error
  */
-router.post('/', developmentAuth, validateReservationCreate, createReservation);
+router.post('/', authMiddleware, validateReservationCreate, createReservation);
 
 /**
  * @swagger
@@ -261,62 +151,17 @@ router.post('/', developmentAuth, validateReservationCreate, createReservation);
  *   put:
  *     summary: Update reservation
  *     tags: [Reservations]
- *     description: |
- *       Update reservation. 
- *       Note: In development mode, no authentication is required.
- *       In production, you must be logged in via GitHub OAuth.
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [pending, confirmed, cancelled, completed]
- *                 example: "confirmed"
- *               paymentStatus:
- *                 type: string
- *                 enum: [pending, paid, refunded, failed]
- *                 example: "paid"
- *               specialRequests:
- *                 type: string
- *                 example: "Add extra towels"
  *     responses:
  *       200:
- *         description: Reservation updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Reservation updated successfully
- *                 data:
- *                   $ref: '#/components/schemas/Reservation'
- *       400:
- *         description: Validation error or invalid ID
- *       401:
- *         description: Authentication required (production only)
- *       404:
- *         description: Reservation not found
- *       500:
- *         description: Server error
+ *         description: Reservation updated
  */
-router.put('/:id', developmentAuth, validateObjectId, validateReservationUpdate, updateReservation);
+router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation);
 
 /**
  * @swagger
@@ -324,43 +169,16 @@ router.put('/:id', developmentAuth, validateObjectId, validateReservationUpdate,
  *   delete:
  *     summary: Delete reservation
  *     tags: [Reservations]
- *     description: |
- *       Delete reservation. 
- *       Note: In development mode, no authentication is required.
- *       In production, admin authentication is required.
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
  *     responses:
  *       200:
- *         description: Reservation deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Reservation deleted successfully
- *       400:
- *         description: Invalid ID format
- *       401:
- *         description: Authentication required (production only)
- *       403:
- *         description: Admin access required (production only)
- *       404:
- *         description: Reservation not found
- *       500:
- *         description: Server error
+ *         description: Reservation deleted
  */
-router.delete('/:id', developmentAdminAuth, validateObjectId, deleteReservation);
+router.delete('/:id', authMiddleware, validateObjectId, deleteReservation);
 
 module.exports = router;
