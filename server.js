@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const passport = require('passport');
 const GitHubStrategy = require('passport-github2').Strategy;
 require('dotenv').config();
@@ -17,25 +18,60 @@ const app = express();
 // ========================
 // Middleware Configuration
 // ========================
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://cse341-reservations-api.onrender.com', 'https://cse341-code-student.onrender.com']
-    : 'http://localhost:3000',
-  credentials: true
-}));
+// Configuración de CORS mejorada para producción
+const corsOptions = {
+  origin: function(origin, callback) {
+    // En desarrollo, permitir cualquier origen
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // En producción, solo permitir orígenes específicos
+    const allowedOrigins = [
+      'https://cse341-reservations-api.onrender.com',
+      'https://cse341-code-student.onrender.com',
+      'https://cse341-reservations-api.onrender.com/api-docs',
+      'http://localhost:3000',
+      'http://localhost:8080'
+    ];
+    
+    // Permitir solicitudes sin origen (como curl, postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      // Solo loguear en desarrollo, no bloquear en producción
+      console.log(`CORS bloqueado para origen: ${origin}`);
+      callback(null, true); // Temporalmente permitir todos
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cookie']
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Para preflight requests
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session configuration
+// Configuración de sesiones para producción
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-session-secret',
+  secret: process.env.SESSION_SECRET || 'your-session-secret-change-this-in-production',
   resave: false,
   saveUninitialized: false,
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI,
+    ttl: 24 * 60 * 60, // 24 horas
+    autoRemove: 'native'
+  }),
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 24 * 60 * 60 * 1000 // 24 horas
   }
 }));
 
@@ -44,7 +80,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // ========================
-// Database Connection (NO conectar en modo test)
+// Database Connection
 // ========================
 if (process.env.NODE_ENV !== 'test') {
   const MONGODB_URI = process.env.MONGODB_URI;
@@ -57,6 +93,8 @@ if (process.env.NODE_ENV !== 'test') {
   mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
   })
   .then(() => {
     console.log('✅ Connected to MongoDB');
@@ -92,8 +130,12 @@ passport.deserializeUser(async (id, done) => {
 passport.use(new GitHubStrategy({
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    callbackURL: process.env.CALLBACK_URL || 'http://localhost:8080/auth/github/callback',
-    scope: ['user:email']
+    callbackURL: process.env.CALLBACK_URL || 
+      (process.env.NODE_ENV === 'production' 
+        ? 'https://cse341-reservations-api.onrender.com/auth/github/callback'
+        : 'http://localhost:8080/auth/github/callback'),
+    scope: ['user:email'],
+    proxy: process.env.NODE_ENV === 'production'
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
@@ -128,11 +170,12 @@ app.get('/auth/github',
 
 app.get('/auth/github/callback',
   passport.authenticate('github', {
-    failureRedirect: '/login',
+    failureRedirect: '/api-docs',
     session: true
   }),
   (req, res) => {
     console.log('GitHub authentication successful for user:', req.user.email);
+    // Redirigir a Swagger
     res.redirect('/api-docs');
   }
 );
@@ -169,6 +212,17 @@ app.get('/auth/current', (req, res) => {
       user: null
     });
   }
+});
+
+// Test authentication endpoint (sin protección)
+app.get('/auth/test', (req, res) => {
+  res.json({
+    success: true,
+    authenticated: req.isAuthenticated(),
+    sessionId: req.sessionID,
+    session: req.session,
+    user: req.user ? req.user.getPublicProfile() : null
+  });
 });
 
 // ========================
@@ -214,6 +268,12 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
   customSiteTitle: 'Reservations API - Stay & Go',
   swaggerOptions: {
     persistAuthorization: true,
+    tryItOutEnabled: true,
+    displayRequestDuration: true,
+    defaultModelsExpandDepth: -1,
+    defaultModelExpandDepth: 2,
+    docExpansion: 'list',
+    filter: true,
     authAction: {
       bearerAuth: {
         name: 'bearerAuth',
@@ -221,7 +281,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
           type: 'apiKey',
           in: 'header',
           name: 'Authorization',
-          description: 'JWT or OAuth token'
+          description: 'JWT token (not implemented yet)'
         },
         value: 'Bearer <token>'
       }
@@ -240,9 +300,25 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     database: dbStatus,
+    session: {
+      enabled: true,
+      cookie: req.session.cookie
+    },
     oauth: {
       github: process.env.GITHUB_CLIENT_ID ? 'Configured' : 'Not Configured'
     }
+  });
+});
+
+// Session debug endpoint
+app.get('/session/debug', (req, res) => {
+  res.json({
+    success: true,
+    sessionId: req.sessionID,
+    session: req.session,
+    authenticated: req.isAuthenticated(),
+    cookies: req.headers.cookie,
+    headers: req.headers
   });
 });
 
@@ -267,7 +343,8 @@ app.get('/', (req, res) => {
       auth: {
         github: '/auth/github',
         logout: '/auth/logout',
-        current: '/auth/current'
+        current: '/auth/current',
+        test: '/auth/test'
       }
     }
   });
@@ -292,25 +369,26 @@ app.use((req, res) => {
       auth: {
         github: '/auth/github',
         logout: '/auth/logout',
-        current: '/auth/current'
+        current: '/auth/current',
+        test: '/auth/test'
       }
     }
   });
 });
 
 // ========================
-// Start Server (solo si no es test)
+// Start Server
 // ========================
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 10000;
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔐 GitHub OAuth: ${process.env.GITHUB_CLIENT_ID ? 'Configured' : 'Not Configured'}`);
-    console.log(`📚 API Documentation: /api-docs`);
-    console.log(`🔑 GitHub Login: /auth/github`);
-    console.log(`🏥 Health check: /health`);
+    console.log(`📚 API Documentation: https://cse341-reservations-api.onrender.com/api-docs`);
+    console.log(`🔑 GitHub Login: https://cse341-reservations-api.onrender.com/auth/github`);
+    console.log(`🏥 Health check: https://cse341-reservations-api.onrender.com/health`);
   });
 } else {
   console.log('🧪 Test mode: Server not started');

@@ -8,7 +8,70 @@ const {
   deleteReservation
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
-const { ensureAuthenticated, ensureAdmin } = require('../middleware/auth');
+
+// Middleware temporal para pruebas en desarrollo
+const developmentAuth = (req, res, next) => {
+  // Si estamos en desarrollo, permitir sin autenticación
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('⚠️ Development mode: Bypassing authentication');
+    
+    // Mock user para desarrollo
+    req.user = {
+      _id: '650a1b2c3d4e5f0012345678',
+      role: 'user',
+      email: 'dev-user@example.com',
+      getPublicProfile: function() {
+        return {
+          id: this._id,
+          name: 'Dev User',
+          email: this.email,
+          role: this.role
+        };
+      }
+    };
+    return next();
+  }
+  
+  // En producción, usar autenticación real
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required. Please log in to access this resource. Visit /auth/github to login.'
+    });
+  }
+  
+  next();
+};
+
+// Middleware temporal para admin en desarrollo
+const developmentAdminAuth = (req, res, next) => {
+  // Si estamos en desarrollo, permitir sin autenticación
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('⚠️ Development mode: Bypassing admin authentication');
+    req.user = {
+      _id: '650a1b2c3d4e5f0012345678',
+      role: 'admin'
+    };
+    return next();
+  }
+  
+  // En producción, verificar autenticación y rol admin
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required. Please log in to access this resource.'
+    });
+  }
+  
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Admin access required.'
+    });
+  }
+  
+  next();
+};
 
 /**
  * @swagger
@@ -118,10 +181,12 @@ router.get('/:id', validateObjectId, getReservationById);
  * @swagger
  * /api/reservations:
  *   post:
- *     summary: Create a new reservation (Requires authentication)
+ *     summary: Create a new reservation
  *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Create a new reservation. 
+ *       Note: In development mode, no authentication is required.
+ *       In production, you must be logged in via GitHub OAuth.
  *     requestBody:
  *       required: true
  *       content:
@@ -182,22 +247,24 @@ router.get('/:id', validateObjectId, getReservationById);
  *       400:
  *         description: Validation error
  *       401:
- *         description: Authentication required
+ *         description: Authentication required (production only)
  *       409:
  *         description: Room not available for selected dates
  *       500:
  *         description: Server error
  */
-router.post('/', ensureAuthenticated, validateReservationCreate, createReservation);
+router.post('/', developmentAuth, validateReservationCreate, createReservation);
 
 /**
  * @swagger
  * /api/reservations/{id}:
  *   put:
- *     summary: Update reservation (Requires authentication)
+ *     summary: Update reservation
  *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Update reservation. 
+ *       Note: In development mode, no authentication is required.
+ *       In production, you must be logged in via GitHub OAuth.
  *     parameters:
  *       - in: path
  *         name: id
@@ -243,22 +310,24 @@ router.post('/', ensureAuthenticated, validateReservationCreate, createReservati
  *       400:
  *         description: Validation error or invalid ID
  *       401:
- *         description: Authentication required
+ *         description: Authentication required (production only)
  *       404:
  *         description: Reservation not found
  *       500:
  *         description: Server error
  */
-router.put('/:id', ensureAuthenticated, validateObjectId, validateReservationUpdate, updateReservation);
+router.put('/:id', developmentAuth, validateObjectId, validateReservationUpdate, updateReservation);
 
 /**
  * @swagger
  * /api/reservations/{id}:
  *   delete:
- *     summary: Delete reservation (Requires admin authentication)
+ *     summary: Delete reservation
  *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Delete reservation. 
+ *       Note: In development mode, no authentication is required.
+ *       In production, admin authentication is required.
  *     parameters:
  *       - in: path
  *         name: id
@@ -284,14 +353,14 @@ router.put('/:id', ensureAuthenticated, validateObjectId, validateReservationUpd
  *       400:
  *         description: Invalid ID format
  *       401:
- *         description: Authentication required
+ *         description: Authentication required (production only)
  *       403:
- *         description: Admin access required
+ *         description: Admin access required (production only)
  *       404:
  *         description: Reservation not found
  *       500:
  *         description: Server error
  */
-router.delete('/:id', ensureAuthenticated, ensureAdmin, validateObjectId, deleteReservation);
+router.delete('/:id', developmentAdminAuth, validateObjectId, deleteReservation);
 
 module.exports = router;
