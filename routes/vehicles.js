@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const {
   getAllVehicles,
   getVehicleById,
@@ -7,17 +9,47 @@ const {
   updateVehicle,
   deleteVehicle
 } = require('../controllers/vehiclesController');
-// Updated imports for separate validation
 const { validateVehicleCreate, validateVehicleUpdate, validateObjectId } = require('../middleware/validation');
 
-// Middleware de autenticación
-const requireAuth = (req, res, next) => {
+// Middleware de autenticación que acepta GitHub session O JWT
+const requireAuth = async (req, res, next) => {
+  // 1. Verificar si hay sesión GitHub
   if (req.isAuthenticated()) {
+    req.user = req.user; // Already set by Passport
     return next();
   }
+
+  // 2. Verificar si hay token JWT
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || 'default-jwt-secret'
+      );
+
+      const user = await User.findById(decoded.id).select('-passwordHash');
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      req.user = user; // Attach user to request
+      return next();
+    } catch (error) {
+      // Token inválido, continuar con error
+    }
+  }
+
+  // 3. Ningún método de autenticación funcionó
   return res.status(401).json({
     success: false,
-    message: 'Authentication required. Please log in with GitHub.'
+    message: 'Authentication required. Please log in with GitHub or provide a valid JWT token.'
   });
 };
 
@@ -31,7 +63,7 @@ const authorizeVehicle = (req, res, next) => {
         message: 'Only administrators or providers can create vehicles'
       });
     }
-    
+
     // Asegurar que el providerId sea el mismo que el usuario autenticado (a menos que sea admin)
     if (req.user.role !== 'admin' && req.body.providerId !== req.user._id.toString()) {
       return res.status(403).json({
@@ -40,8 +72,6 @@ const authorizeVehicle = (req, res, next) => {
       });
     }
   }
-
-  // Para rutas PUT: la verificación se hará en el controlador
   next();
 };
 
@@ -127,9 +157,11 @@ router.get('/:id', validateObjectId, getVehicleById);
  *   post:
  *     summary: Create a new vehicle
  *     tags: [Vehicles]
+ *     security:
+ *       - bearerAuth: []
  *     description: |
  *       Create a new vehicle.
- *       Requires GitHub OAuth authentication.
+ *       Requires authentication (GitHub OAuth session or JWT token).
  *       Only users with 'provider' or 'admin' role can create vehicles.
  *     requestBody:
  *       required: true
@@ -206,9 +238,11 @@ router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVeh
  *   put:
  *     summary: Update vehicle
  *     tags: [Vehicles]
+ *     security:
+ *       - bearerAuth: []
  *     description: |
  *       Update an existing vehicle.
- *       Requires GitHub OAuth authentication.
+ *       Requires authentication (GitHub OAuth session or JWT token).
  *       Only admin or the vehicle owner can update vehicles.
  *     parameters:
  *       - in: path
@@ -262,9 +296,11 @@ router.put('/:id', requireAuth, validateObjectId, validateVehicleUpdate, updateV
  *   delete:
  *     summary: Delete vehicle
  *     tags: [Vehicles]
+ *     security:
+ *       - bearerAuth: []
  *     description: |
  *       Delete a vehicle by ID.
- *       Requires GitHub OAuth authentication.
+ *       Requires authentication (GitHub OAuth session or JWT token).
  *       Only admin or the vehicle owner can delete vehicles.
  *     parameters:
  *       - in: path

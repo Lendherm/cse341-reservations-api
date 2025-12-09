@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const {
   getAllReservations,
   getReservationById,
@@ -9,14 +11,45 @@ const {
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
 
-// Middleware de autenticación basado en sesión GitHub
-const requireAuth = (req, res, next) => {
+// Middleware de autenticación que acepta GitHub session O JWT
+const requireAuth = async (req, res, next) => {
+  // 1. Verificar si hay sesión GitHub
   if (req.isAuthenticated()) {
+    req.user = req.user; // Already set by Passport
     return next();
   }
+
+  // 2. Verificar si hay token JWT
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || 'default-jwt-secret'
+      );
+
+      const user = await User.findById(decoded.id).select('-passwordHash');
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      req.user = user; // Attach user to request
+      return next();
+    } catch (error) {
+      // Token inválido, continuar con error
+    }
+  }
+
+  // 3. Ningún método de autenticación funcionó
   return res.status(401).json({
     success: false,
-    message: 'Authentication required. Please log in with GitHub.'
+    message: 'Authentication required. Please log in with GitHub or provide a valid JWT token.'
   });
 };
 
@@ -133,9 +166,11 @@ router.get('/:id', validateObjectId, getReservationById);
  *   post:
  *     summary: Create a new reservation
  *     tags: [Reservations]
+ *     security:
+ *       - bearerAuth: []
  *     description: |
  *       Create a new reservation.
- *       Requires GitHub OAuth authentication.
+ *       Requires authentication (GitHub OAuth session or JWT token).
  *       The userId will be automatically set to the authenticated user's ID.
  *     requestBody:
  *       required: true
@@ -151,6 +186,9 @@ router.get('/:id', validateObjectId, getReservationById);
  *               - numGuests
  *               - totalAmount
  *             properties:
+ *               userId:
+ *                 type: string
+ *                 example: "650a1b2c3d4e5f0012345678"
  *               propertyId:
  *                 type: string
  *                 example: "650a1b2c3d4e5f0012345679"
@@ -178,7 +216,7 @@ router.get('/:id', validateObjectId, getReservationById);
  *       201:
  *         description: Reservation created successfully
  *       401:
- *         description: Authentication required. Please log in with GitHub.
+ *         description: Authentication required
  *       403:
  *         description: Not authorized to create reservation
  *       409:
@@ -192,9 +230,11 @@ router.post('/', requireAuth, authorizeReservation, validateReservationCreate, c
  *   put:
  *     summary: Update a reservation by ID
  *     tags: [Reservations]
+ *     security:
+ *       - bearerAuth: []
  *     description: |
  *       Update an existing reservation.
- *       Requires GitHub OAuth authentication.
+ *       Requires authentication (GitHub OAuth session or JWT token).
  *       Users can only update their own reservations unless they are admin.
  *     parameters:
  *       - in: path
@@ -236,9 +276,11 @@ router.put('/:id', requireAuth, validateObjectId, validateReservationUpdate, upd
  *   delete:
  *     summary: Delete reservation
  *     tags: [Reservations]
+ *     security:
+ *       - bearerAuth: []
  *     description: |
  *       Delete a reservation by ID.
- *       Requires GitHub OAuth authentication.
+ *       Requires authentication (GitHub OAuth session or JWT token).
  *       Users can only delete their own reservations unless they are admin.
  *     parameters:
  *       - in: path
