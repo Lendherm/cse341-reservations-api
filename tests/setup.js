@@ -1,4 +1,4 @@
-// tests/setup.js - Simplified setup
+// tests/setup.js - Updated with version fix
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
@@ -12,8 +12,12 @@ mongoose.set('strictQuery', true);
 
 beforeAll(async () => {
   try {
-    // Create in-memory MongoDB server
-    mongoServer = await MongoMemoryServer.create();
+    // Create in-memory MongoDB server with compatible version for Debian 12
+    mongoServer = await MongoMemoryServer.create({
+      binary: {
+        version: '7.0.3' // Explicitly use version compatible with Debian 12
+      }
+    });
     const mongoUri = mongoServer.getUri();
     
     // Connect mongoose
@@ -27,7 +31,17 @@ beforeAll(async () => {
     console.log('✅ Connected to in-memory MongoDB for testing');
   } catch (error) {
     console.error('❌ Error setting up test database:', error);
-    throw error;
+    
+    // Fallback: Use MONGO_URI from environment or skip in-memory DB for tests
+    if (process.env.MONGO_URI) {
+      console.log('⚠️  Falling back to MONGO_URI from environment');
+      await mongoose.connect(process.env.MONGO_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+      });
+    } else {
+      throw error;
+    }
   }
 });
 

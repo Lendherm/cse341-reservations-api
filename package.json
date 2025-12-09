@@ -8,20 +8,20 @@
     "dev": "nodemon server.js",
     "render-build": "node -e \"console.log('Build script ejecutado')\"",
 
-    "test": "cross-env NODE_ENV=test jest --config jest.config.js",
-    "test:watch": "cross-env NODE_ENV=test jest --config jest.config.js --watch",
-    "test:coverage": "cross-env NODE_ENV=test jest --config jest.config.js --coverage",
+    "test": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js",
+    "test:watch": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js --watch",
+    "test:coverage": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js --coverage",
     
-    "test:properties": "cross-env NODE_ENV=test jest --config jest.config.js tests/properties.test.js",
-    "test:vehicles": "cross-env NODE_ENV=test jest --config jest.config.js tests/vehicles.test.js",
-    "test:users": "cross-env NODE_ENV=test jest --config jest.config.js tests/users.test.js",
-    "test:reservations": "cross-env NODE_ENV=test jest --config jest.config.js tests/reservations.test.js",
-    "test:auth": "cross-env NODE_ENV=test jest --config jest.config.js tests/auth.test.js",
+    "test:properties": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js tests/properties.test.js",
+    "test:vehicles": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js tests/vehicles.test.js",
+    "test:users": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js tests/users.test.js",
+    "test:reservations": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js tests/reservations.test.js",
+    "test:auth": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js tests/auth.test.js",
     
-    "test:all": "cross-env NODE_ENV=test jest --config jest.config.js tests/",
+    "test:all": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js tests/",
     
-    "test:debug": "cross-env NODE_ENV=test jest --config jest.config.js --verbose --runInBand --detectOpenHandles",
-    "test:reservations:debug": "cross-env NODE_ENV=test jest --config jest.config.js tests/reservations.test.js --verbose --runInBand --detectOpenHandles"
+    "test:debug": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js --verbose --runInBand --detectOpenHandles",
+    "test:reservations:debug": "cross-env NODE_ENV=test MONGOMS_VERSION=7.0.3 jest --config jest.config.js tests/reservations.test.js --verbose --runInBand --detectOpenHandles"
   },
   "keywords": [
     "nodejs",
