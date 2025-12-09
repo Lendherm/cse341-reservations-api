@@ -12,13 +12,13 @@ const getAllReservations = async (req, res, next) => {
 
     // Si el usuario no es admin y no especificó userId, mostrar solo sus reservas
     let filter = {};
-    if (req.user && req.user.role !== 'admin') {
+    if (req.isAuthenticated() && req.user.role !== 'admin') {
       // Si no es admin, solo puede ver sus propias reservas
       filter.userId = req.user._id;
     }
     
     // Aplicar filtros adicionales
-    if (userId && (req.user.role === 'admin' || userId === req.user._id.toString())) {
+    if (userId && req.isAuthenticated() && (req.user.role === 'admin' || userId === req.user._id.toString())) {
       filter.userId = userId;
     }
     
@@ -66,7 +66,7 @@ const getReservationById = async (req, res, next) => {
     }
 
     // Verificar que el usuario tenga acceso a esta reserva
-    if (req.user && req.user.role !== 'admin' && 
+    if (req.isAuthenticated() && req.user.role !== 'admin' && 
         reservation.userId._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -86,10 +86,15 @@ const getReservationById = async (req, res, next) => {
 // POST create reservation
 const createReservation = async (req, res, next) => {
   try {
-    // El middleware verifyToken y authorizeReservation ya verificaron la autorización
-    
+    // El middleware requireAuth ya verificó la autenticación
+    // Usar el userId del usuario autenticado (ignorar cualquier userId en el body)
+    const reservationData = {
+      ...req.body,
+      userId: req.user._id  // Forzar el userId del usuario autenticado
+    };
+
     // Check if property exists and room is available
-    const property = await Property.findById(req.body.propertyId);
+    const property = await Property.findById(reservationData.propertyId);
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -97,22 +102,14 @@ const createReservation = async (req, res, next) => {
       });
     }
 
-    // Check if user exists
-    const user = await User.findById(req.body.userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
     // Check for date conflicts
     const conflictingReservation = await Reservation.findOne({
-      propertyId: req.body.propertyId,
-      roomId: req.body.roomId,
+      propertyId: reservationData.propertyId,
+      roomId: reservationData.roomId,
       status: { $in: ['confirmed', 'pending'] },
       $or: [
-        { startDate: { $lt: new Date(req.body.endDate) }, endDate: { $gt: new Date(req.body.startDate) } }
+        { startDate: { $lt: new Date(reservationData.endDate) }, 
+          endDate: { $gt: new Date(reservationData.startDate) } }
       ]
     });
 
@@ -123,7 +120,7 @@ const createReservation = async (req, res, next) => {
       });
     }
 
-    const reservation = new Reservation(req.body);
+    const reservation = new Reservation(reservationData);
     const savedReservation = await reservation.save();
 
     // Populate references

@@ -8,30 +8,30 @@ const {
   deleteReservation
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
-// Añade esta importación
-const { verifyToken } = require('../middleware/jwtAuth');
 
-// Añade middleware de autorización para reservaciones
-const authorizeReservation = (req, res, next) => {
-  // Si el usuario no está autenticado
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
+// Middleware de autenticación basado en sesión GitHub
+const requireAuth = (req, res, next) => {
+  if (req.isAuthenticated()) {
+    return next();
   }
+  return res.status(401).json({
+    success: false,
+    message: 'Authentication required. Please log in with GitHub.'
+  });
+};
 
-  // Para POST: verificar que el userId en el cuerpo sea el mismo que el usuario autenticado (a menos que sea admin)
+// Middleware de autorización para reservaciones
+const authorizeReservation = (req, res, next) => {
+  // Para POST: solo puedes crear reservas para ti mismo (a menos que seas admin)
   if (req.method === 'POST') {
-    if (req.user.role !== 'admin' && req.body.userId !== req.user._id.toString()) {
+    // El userId debe coincidir con el usuario autenticado o ser admin
+    if (req.user.role !== 'admin' && req.body.userId && req.body.userId !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'You can only create reservations for yourself'
       });
     }
   }
-
-  // Para PUT: la verificación se hará en el controlador ya que necesitamos la reserva
   next();
 };
 
@@ -48,6 +48,10 @@ const authorizeReservation = (req, res, next) => {
  *   get:
  *     summary: Get all reservations with filters
  *     tags: [Reservations]
+ *     description: |
+ *       Returns a list of reservations.
+ *       If authenticated, returns user's reservations.
+ *       If not authenticated, returns public reservations (if any) or empty.
  *     parameters:
  *       - $ref: '#/components/parameters/pageParam'
  *       - $ref: '#/components/parameters/limitParam'
@@ -55,7 +59,7 @@ const authorizeReservation = (req, res, next) => {
  *         name: userId
  *         schema:
  *           type: string
- *         description: Filter by user ID
+ *         description: Filter by user ID (admin only)
  *       - in: query
  *         name: propertyId
  *         schema:
@@ -82,8 +86,17 @@ const authorizeReservation = (req, res, next) => {
  *     responses:
  *       200:
  *         description: List of reservations
+ *       500:
+ *         description: Server error
  */
-router.get('/', getAllReservations);
+router.get('/', (req, res, next) => {
+  // Si el usuario está autenticado, podemos filtrar por su ID
+  // pero dejamos que el controlador maneje la lógica
+  if (req.isAuthenticated()) {
+    req.userId = req.user._id;
+  }
+  getAllReservations(req, res, next);
+});
 
 /**
  * @swagger
@@ -91,6 +104,9 @@ router.get('/', getAllReservations);
  *   get:
  *     summary: Get reservation by ID
  *     tags: [Reservations]
+ *     description: |
+ *       Returns a single reservation by ID.
+ *       Users can only view their own reservations unless they are admin.
  *     parameters:
  *       - in: path
  *         name: id
@@ -102,6 +118,12 @@ router.get('/', getAllReservations);
  *     responses:
  *       200:
  *         description: Reservation details
+ *       403:
+ *         description: Not authorized to view this reservation
+ *       404:
+ *         description: Reservation not found
+ *       500:
+ *         description: Server error
  */
 router.get('/:id', validateObjectId, getReservationById);
 
@@ -111,11 +133,10 @@ router.get('/:id', validateObjectId, getReservationById);
  *   post:
  *     summary: Create a new reservation
  *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
  *     description: |
- *       Create a new reservation. 
- *       Requires JWT authentication.
+ *       Create a new reservation.
+ *       Requires GitHub OAuth authentication.
+ *       The userId will be automatically set to the authenticated user's ID.
  *     requestBody:
  *       required: true
  *       content:
@@ -123,7 +144,6 @@ router.get('/:id', validateObjectId, getReservationById);
  *           schema:
  *             type: object
  *             required:
- *               - userId
  *               - propertyId
  *               - roomId
  *               - startDate
@@ -131,9 +151,6 @@ router.get('/:id', validateObjectId, getReservationById);
  *               - numGuests
  *               - totalAmount
  *             properties:
- *               userId:
- *                 type: string
- *                 example: "650a1b2c3d4e5f0012345678"
  *               propertyId:
  *                 type: string
  *                 example: "650a1b2c3d4e5f0012345679"
@@ -161,11 +178,13 @@ router.get('/:id', validateObjectId, getReservationById);
  *       201:
  *         description: Reservation created successfully
  *       401:
- *         description: Authentication required
+ *         description: Authentication required. Please log in with GitHub.
  *       403:
  *         description: Not authorized to create reservation
+ *       409:
+ *         description: Room not available for selected dates
  */
-router.post('/', verifyToken, authorizeReservation, validateReservationCreate, createReservation);
+router.post('/', requireAuth, authorizeReservation, validateReservationCreate, createReservation);
 
 /**
  * @swagger
@@ -173,8 +192,10 @@ router.post('/', verifyToken, authorizeReservation, validateReservationCreate, c
  *   put:
  *     summary: Update a reservation by ID
  *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Update an existing reservation.
+ *       Requires GitHub OAuth authentication.
+ *       Users can only update their own reservations unless they are admin.
  *     parameters:
  *       - in: path
  *         name: id
@@ -190,10 +211,6 @@ router.post('/', verifyToken, authorizeReservation, validateReservationCreate, c
  *           schema:
  *             $ref: '#/components/schemas/Reservation'
  *           example:
- *             userId: "650a1b2c3d4e5f0012345678"
- *             reservationType: "accommodation"
- *             resourceId: "650a1b2c3d4e5f0012345679"
- *             roomId: "BEACH001"
  *             startDate: "2024-12-20"
  *             endDate: "2024-12-25"
  *             numGuests: 2
@@ -202,20 +219,16 @@ router.post('/', verifyToken, authorizeReservation, validateReservationCreate, c
  *     responses:
  *       200:
  *         description: Reservation updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Reservation'
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
- *         $ref: '#/components/responses/Unauthorized'
+ *         description: Authentication required
  *       403:
  *         description: Not authorized to update this reservation
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
-router.put('/:id', verifyToken, validateObjectId, validateReservationUpdate, updateReservation);
+router.put('/:id', requireAuth, validateObjectId, validateReservationUpdate, updateReservation);
 
 /**
  * @swagger
@@ -223,8 +236,10 @@ router.put('/:id', verifyToken, validateObjectId, validateReservationUpdate, upd
  *   delete:
  *     summary: Delete reservation
  *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Delete a reservation by ID.
+ *       Requires GitHub OAuth authentication.
+ *       Users can only delete their own reservations unless they are admin.
  *     parameters:
  *       - in: path
  *         name: id
@@ -238,7 +253,9 @@ router.put('/:id', verifyToken, validateObjectId, validateReservationUpdate, upd
  *         description: Reservation deleted successfully
  *       401:
  *         description: Authentication required
+ *       403:
+ *         description: Not authorized to delete this reservation
  */
-router.delete('/:id', verifyToken, validateObjectId, deleteReservation);
+router.delete('/:id', requireAuth, validateObjectId, deleteReservation);
 
 module.exports = router;

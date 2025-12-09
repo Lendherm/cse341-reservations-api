@@ -9,19 +9,20 @@ const {
 } = require('../controllers/vehiclesController');
 // Updated imports for separate validation
 const { validateVehicleCreate, validateVehicleUpdate, validateObjectId } = require('../middleware/validation');
-// Añade esta importación para JWT
-const { verifyToken } = require('../middleware/jwtAuth');
 
-// Añade middleware de autorización específico para vehículos
-const authorizeVehicle = (req, res, next) => {
-  // Si el usuario no está autenticado
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
+// Middleware de autenticación
+const requireAuth = (req, res, next) => {
+  if (req.isAuthenticated()) {
+    return next();
   }
+  return res.status(401).json({
+    success: false,
+    message: 'Authentication required. Please log in with GitHub.'
+  });
+};
 
+// Middleware de autorización para vehículos
+const authorizeVehicle = (req, res, next) => {
   // Para rutas POST: verificar que el usuario sea admin o provider
   if (req.method === 'POST') {
     if (req.user.role !== 'admin' && req.user.role !== 'provider') {
@@ -40,12 +41,7 @@ const authorizeVehicle = (req, res, next) => {
     }
   }
 
-  // Para rutas PUT: verificar que el usuario sea admin, provider del vehículo o propietario
-  if (req.method === 'PUT') {
-    // Esta verificación se hará en el controlador ya que necesitamos el vehículo
-    next();
-  }
-
+  // Para rutas PUT: la verificación se hará en el controlador
   next();
 };
 
@@ -131,8 +127,10 @@ router.get('/:id', validateObjectId, getVehicleById);
  *   post:
  *     summary: Create a new vehicle
  *     tags: [Vehicles]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Create a new vehicle.
+ *       Requires GitHub OAuth authentication.
+ *       Only users with 'provider' or 'admin' role can create vehicles.
  *     requestBody:
  *       required: true
  *       content:
@@ -200,8 +198,7 @@ router.get('/:id', validateObjectId, getVehicleById);
  *       500:
  *         description: Server error
  */
-// Proteger con JWT y autorización
-router.post('/', verifyToken, authorizeVehicle, validateVehicleCreate, createVehicle);
+router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVehicle);
 
 /**
  * @swagger
@@ -209,8 +206,10 @@ router.post('/', verifyToken, authorizeVehicle, validateVehicleCreate, createVeh
  *   put:
  *     summary: Update vehicle
  *     tags: [Vehicles]
- *     security:
- *       - bearerAuth: []
+ *     description: |
+ *       Update an existing vehicle.
+ *       Requires GitHub OAuth authentication.
+ *       Only admin or the vehicle owner can update vehicles.
  *     parameters:
  *       - in: path
  *         name: id
@@ -255,8 +254,7 @@ router.post('/', verifyToken, authorizeVehicle, validateVehicleCreate, createVeh
  *       500:
  *         description: Server error
  */
-// Proteger con JWT
-router.put('/:id', verifyToken, validateObjectId, validateVehicleUpdate, updateVehicle);
+router.put('/:id', requireAuth, validateObjectId, validateVehicleUpdate, updateVehicle);
 
 /**
  * @swagger
@@ -264,6 +262,10 @@ router.put('/:id', verifyToken, validateObjectId, validateVehicleUpdate, updateV
  *   delete:
  *     summary: Delete vehicle
  *     tags: [Vehicles]
+ *     description: |
+ *       Delete a vehicle by ID.
+ *       Requires GitHub OAuth authentication.
+ *       Only admin or the vehicle owner can delete vehicles.
  *     parameters:
  *       - in: path
  *         name: id
@@ -275,11 +277,15 @@ router.put('/:id', verifyToken, validateObjectId, validateVehicleUpdate, updateV
  *     responses:
  *       200:
  *         description: Vehicle deleted successfully
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Not authorized to delete this vehicle
  *       404:
  *         description: Vehicle not found
  *       500:
  *         description: Server error
  */
-router.delete('/:id', validateObjectId, deleteVehicle);
+router.delete('/:id', requireAuth, validateObjectId, deleteVehicle);
 
 module.exports = router;
