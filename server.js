@@ -175,23 +175,6 @@ if (process.env.GITHUB_CLIENT_ID) {
   );
 }
 
-// ========================
-// JWT Authentication Routes
-// ========================
-const { verifyToken, generateTokenEndpoint, generateTokenFromSession } = require('./middleware/jwtAuth');
-
-app.post('/api/auth/token', generateTokenEndpoint);
-app.get('/api/auth/token-from-session', generateTokenFromSession);
-
-// Middleware para probar JWT
-app.get('/api/auth/jwt-test', verifyToken, (req, res) => {
-  res.json({
-    success: true,
-    message: 'JWT token is valid!',
-    user: req.user
-  });
-});
-
 // Logout route
 app.get('/auth/logout', (req, res, next) => {
   req.logout((err) => {

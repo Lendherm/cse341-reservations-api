@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { register, login, getMe } = require('../controllers/authController');
 const { validateUser } = require('../middleware/validation');
-const { verifyToken } = require('../middleware/jwtAuth');
+const { verifyToken, generateTokenEndpoint, generateTokenFromSession } = require('../middleware/jwtAuth');
 
 /**
  * @swagger
@@ -85,6 +85,75 @@ router.post('/register', validateUser, register);
  *         description: Invalid credentials
  */
 router.post('/login', login);
+
+/**
+ * @swagger
+ * /api/auth/token:
+ *   post:
+ *     summary: Generate JWT token
+ *     tags: [Authentication]
+ *     description: Generate a JWT token using email and password (for API clients)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "john@example.com"
+ *               password:
+ *                 type: string
+ *                 example: "password123"
+ *     responses:
+ *       200:
+ *         description: Token generated successfully
+ *       401:
+ *         description: Invalid credentials
+ */
+router.post('/token', generateTokenEndpoint);
+
+/**
+ * @swagger
+ * /api/auth/token-from-session:
+ *   get:
+ *     summary: Generate JWT token from current session
+ *     tags: [Authentication]
+ *     description: Generate a JWT token for the currently logged-in user (GitHub OAuth)
+ *     responses:
+ *       200:
+ *         description: Token generated successfully
+ *       401:
+ *         description: Not authenticated
+ */
+router.get('/token-from-session', generateTokenFromSession);
+
+/**
+ * @swagger
+ * /api/auth/jwt-test:
+ *   get:
+ *     summary: Test JWT token
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: JWT token is valid
+ *       401:
+ *         description: Invalid or expired token
+ */
+router.get('/jwt-test', verifyToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'JWT token is valid!',
+    user: req.user
+  });
+});
 
 /**
  * @swagger

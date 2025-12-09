@@ -1,11 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-/**
- * JWT Authentication Middleware
- * This middleware supports Bearer token authentication for API calls
- */
-
 // Generate JWT token for a user
 const generateToken = (user) => {
   return jwt.sign(
@@ -86,36 +81,6 @@ const verifyToken = async (req, res, next) => {
       success: false,
       message: 'Authentication failed'
     });
-  }
-};
-
-// Optional JWT verification (doesn't block if no token)
-const optionalVerifyToken = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next(); // Continue without authentication
-  }
-  
-  const token = authHeader.split(' ')[1];
-  
-  try {
-    const decoded = jwt.verify(
-      token, 
-      process.env.JWT_SECRET || 'your-jwt-secret-key-change-in-production'
-    );
-    
-    const user = await User.findById(decoded.id).select('-passwordHash');
-    
-    if (user) {
-      req.user = user;
-    }
-    
-    next();
-  } catch (error) {
-    // Don't block on token errors, just continue without user
-    console.log('Optional JWT verification failed:', error.message);
-    next();
   }
 };
 
@@ -206,7 +171,6 @@ const generateTokenFromSession = async (req, res) => {
 module.exports = {
   generateToken,
   verifyToken,
-  optionalVerifyToken,
   generateTokenEndpoint,
   generateTokenFromSession
 };

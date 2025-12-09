@@ -1,10 +1,11 @@
 const User = require('../models/User');
+const { generateToken } = require('../middleware/jwtAuth');
 
 // @desc    Register user
 // @route   POST /api/auth/register
 const register = async (req, res, next) => {
   try {
-    const { name, email, passwordHash, phone } = req.body;
+    const { name, email, passwordHash, phone, role } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -20,11 +21,13 @@ const register = async (req, res, next) => {
       email: email.toLowerCase().trim(),
       passwordHash,
       phone: phone ? phone.trim() : undefined,
-      role: 'user' // Default role
+      role: role || 'user' // Use provided role or default to 'user'
     });
 
     const savedUser = await user.save();
-    const token = savedUser.generateAuthToken();
+    
+    // Generate JWT token
+    const token = generateToken(savedUser);
 
     res.status(201).json({
       success: true,
@@ -73,7 +76,8 @@ const login = async (req, res, next) => {
       });
     }
 
-    const token = user.generateAuthToken();
+    // Generate JWT token
+    const token = generateToken(user);
 
     res.json({
       success: true,
@@ -95,11 +99,10 @@ const login = async (req, res, next) => {
 // @route   GET /api/auth/me
 const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id);
-
+    // req.user is set by verifyToken middleware
     res.json({
       success: true,
-      data: user
+      data: req.user
     });
   } catch (error) {
     next(error);
