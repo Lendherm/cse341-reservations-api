@@ -175,6 +175,23 @@ if (process.env.GITHUB_CLIENT_ID) {
   );
 }
 
+// ========================
+// JWT Authentication Routes
+// ========================
+const { verifyToken, generateTokenEndpoint, generateTokenFromSession } = require('./middleware/jwtAuth');
+
+app.post('/api/auth/token', generateTokenEndpoint);
+app.get('/api/auth/token-from-session', generateTokenFromSession);
+
+// Middleware para probar JWT
+app.get('/api/auth/jwt-test', verifyToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'JWT token is valid!',
+    user: req.user
+  });
+});
+
 // Logout route
 app.get('/auth/logout', (req, res, next) => {
   req.logout((err) => {
@@ -226,11 +243,13 @@ const usersRoutes = require('./routes/users');
 const propertiesRoutes = require('./routes/properties');
 const reservationsRoutes = require('./routes/reservations');
 const vehiclesRoutes = require('./routes/vehicles');
+const authRoutes = require('./routes/auth');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/properties', propertiesRoutes);
 app.use('/api/reservations', reservationsRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
+app.use('/api/auth', authRoutes); // Nuevo: rutas de autenticación
 
 // ========================
 // Authentication Middleware (opcional)
@@ -316,8 +335,9 @@ app.get('/', (req, res) => {
       properties: '/api/properties',
       reservations: '/api/reservations',
       vehicles: '/api/vehicles',
+      auth: '/api/auth',
       health: '/health',
-      auth: {
+      oauth: {
         current: '/auth/current',
         test: '/auth/test',
         logout: '/auth/logout'
@@ -341,6 +361,7 @@ app.use((req, res) => {
       properties: '/api/properties',
       reservations: '/api/reservations',
       vehicles: '/api/vehicles',
+      auth: '/api/auth',
       health: '/health'
     }
   });
@@ -356,6 +377,7 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔐 GitHub OAuth: ${process.env.GITHUB_CLIENT_ID ? 'Configured' : 'Not Configured'}`);
+    console.log(`🔐 JWT Authentication: Available at /api/auth/token`);
     console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
     console.log(`🔑 GitHub Login: http://localhost:${PORT}/auth/github`);
     console.log(`🏥 Health check: http://localhost:${PORT}/health`);

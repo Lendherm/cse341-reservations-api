@@ -9,6 +9,45 @@ const {
 } = require('../controllers/vehiclesController');
 // Updated imports for separate validation
 const { validateVehicleCreate, validateVehicleUpdate, validateObjectId } = require('../middleware/validation');
+// Añade esta importación para JWT
+const { verifyToken } = require('../middleware/jwtAuth');
+
+// Añade middleware de autorización específico para vehículos
+const authorizeVehicle = (req, res, next) => {
+  // Si el usuario no está autenticado
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required'
+    });
+  }
+
+  // Para rutas POST: verificar que el usuario sea admin o provider
+  if (req.method === 'POST') {
+    if (req.user.role !== 'admin' && req.user.role !== 'provider') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators or providers can create vehicles'
+      });
+    }
+    
+    // Asegurar que el providerId sea el mismo que el usuario autenticado (a menos que sea admin)
+    if (req.user.role !== 'admin' && req.body.providerId !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only create vehicles for your own account'
+      });
+    }
+  }
+
+  // Para rutas PUT: verificar que el usuario sea admin, provider del vehículo o propietario
+  if (req.method === 'PUT') {
+    // Esta verificación se hará en el controlador ya que necesitamos el vehículo
+    next();
+  }
+
+  next();
+};
 
 /**
  * @swagger
@@ -92,6 +131,8 @@ router.get('/:id', validateObjectId, getVehicleById);
  *   post:
  *     summary: Create a new vehicle
  *     tags: [Vehicles]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -152,13 +193,15 @@ router.get('/:id', validateObjectId, getVehicleById);
  *         description: Vehicle created successfully
  *       400:
  *         description: Validation error
+ *       401:
+ *         description: Authentication required
  *       403:
- *         description: Only providers can create vehicles
+ *         description: Only providers or admins can create vehicles
  *       500:
  *         description: Server error
  */
-// Changed to validateVehicleCreate
-router.post('/', validateVehicleCreate, createVehicle);
+// Proteger con JWT y autorización
+router.post('/', verifyToken, authorizeVehicle, validateVehicleCreate, createVehicle);
 
 /**
  * @swagger
@@ -166,6 +209,8 @@ router.post('/', validateVehicleCreate, createVehicle);
  *   put:
  *     summary: Update vehicle
  *     tags: [Vehicles]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -201,13 +246,17 @@ router.post('/', validateVehicleCreate, createVehicle);
  *     responses:
  *       200:
  *         description: Vehicle updated successfully
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Not authorized to update this vehicle
  *       404:
  *         description: Vehicle not found
  *       500:
  *         description: Server error
  */
-// Changed to validateVehicleUpdate
-router.put('/:id', validateObjectId, validateVehicleUpdate, updateVehicle);
+// Proteger con JWT
+router.put('/:id', verifyToken, validateObjectId, validateVehicleUpdate, updateVehicle);
 
 /**
  * @swagger

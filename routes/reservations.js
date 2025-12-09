@@ -8,69 +8,31 @@ const {
   deleteReservation
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
+// Añade esta importación
+const { verifyToken } = require('../middleware/jwtAuth');
 
-// Middleware simplificado - PERMITIR SIN AUTENTICACIÓN TEMPORALMENTE
-const authMiddleware = (req, res, next) => {
-  // TEMPORALMENTE: Permitir siempre sin autenticación
-  console.log('🔓 Authentication bypassed for testing');
-  req.user = {
-    _id: '650a1b2c3d4e5f0012345678',
-    role: 'user',
-    getPublicProfile: function() {
-      return {
-        id: this._id,
-        role: this.role
-      };
-    }
-  };
-  return next();
-  
-  // Si quieres mantener autenticación en producción, descomenta esto:
-  /*
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('🔓 Development mode - authentication bypassed');
-    req.user = {
-      _id: '650a1b2c3d4e5f0012345678',
-      role: 'user',
-      getPublicProfile: function() {
-        return {
-          id: this._id,
-          role: this.role
-        };
-      }
-    };
-    return next();
-  }
-  
-  // EN PRODUCCIÓN: Verificar si hay sesión (GitHub OAuth)
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  
-  // Si no hay sesión, verificar header de autorización
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader) {
+// Añade middleware de autorización para reservaciones
+const authorizeReservation = (req, res, next) => {
+  // Si el usuario no está autenticado
+  if (!req.user) {
     return res.status(401).json({
       success: false,
-      message: 'Authentication required. Please login via GitHub OAuth or provide Authorization header'
+      message: 'Authentication required'
     });
   }
-  
-  // Token simple temporal
-  if (authHeader === 'Bearer test-token-123') {
-    req.user = {
-      _id: '650a1b2c3d4e5f0012345678',
-      role: 'user'
-    };
-    return next();
+
+  // Para POST: verificar que el userId en el cuerpo sea el mismo que el usuario autenticado (a menos que sea admin)
+  if (req.method === 'POST') {
+    if (req.user.role !== 'admin' && req.body.userId !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only create reservations for yourself'
+      });
+    }
   }
-  
-  return res.status(401).json({
-    success: false,
-    message: 'Invalid token. Use: Bearer test-token-123'
-  });
-  */
+
+  // Para PUT: la verificación se hará en el controlador ya que necesitamos la reserva
+  next();
 };
 
 /**
@@ -149,9 +111,11 @@ router.get('/:id', validateObjectId, getReservationById);
  *   post:
  *     summary: Create a new reservation
  *     tags: [Reservations]
+ *     security:
+ *       - bearerAuth: []
  *     description: |
  *       Create a new reservation. 
- *       Note: Authentication is temporarily disabled for testing.
+ *       Requires JWT authentication.
  *     requestBody:
  *       required: true
  *       content:
@@ -196,8 +160,12 @@ router.get('/:id', validateObjectId, getReservationById);
  *     responses:
  *       201:
  *         description: Reservation created successfully
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Not authorized to create reservation
  */
-router.post('/', authMiddleware, validateReservationCreate, createReservation);
+router.post('/', verifyToken, authorizeReservation, validateReservationCreate, createReservation);
 
 /**
  * @swagger
@@ -242,11 +210,12 @@ router.post('/', authMiddleware, validateReservationCreate, createReservation);
  *         $ref: '#/components/responses/ValidationError'
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Not authorized to update this reservation
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
-
-router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, updateReservation);
+router.put('/:id', verifyToken, validateObjectId, validateReservationUpdate, updateReservation);
 
 /**
  * @swagger
@@ -254,6 +223,8 @@ router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, 
  *   delete:
  *     summary: Delete reservation
  *     tags: [Reservations]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -265,7 +236,9 @@ router.put('/:id', authMiddleware, validateObjectId, validateReservationUpdate, 
  *     responses:
  *       200:
  *         description: Reservation deleted successfully
+ *       401:
+ *         description: Authentication required
  */
-router.delete('/:id', authMiddleware, validateObjectId, deleteReservation);
+router.delete('/:id', verifyToken, validateObjectId, deleteReservation);
 
 module.exports = router;

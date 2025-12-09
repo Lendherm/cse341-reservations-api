@@ -10,9 +10,18 @@ const getAllReservations = async (req, res, next) => {
     const skip = (page - 1) * limit;
     const { userId, propertyId, status, startDate, endDate } = req.query;
 
-    // Build filter
+    // Si el usuario no es admin y no especificó userId, mostrar solo sus reservas
     let filter = {};
-    if (userId) filter.userId = userId;
+    if (req.user && req.user.role !== 'admin') {
+      // Si no es admin, solo puede ver sus propias reservas
+      filter.userId = req.user._id;
+    }
+    
+    // Aplicar filtros adicionales
+    if (userId && (req.user.role === 'admin' || userId === req.user._id.toString())) {
+      filter.userId = userId;
+    }
+    
     if (propertyId) filter.propertyId = propertyId;
     if (status) filter.status = status;
     if (startDate) filter.startDate = { $gte: new Date(startDate) };
@@ -56,6 +65,15 @@ const getReservationById = async (req, res, next) => {
       });
     }
 
+    // Verificar que el usuario tenga acceso a esta reserva
+    if (req.user && req.user.role !== 'admin' && 
+        reservation.userId._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this reservation'
+      });
+    }
+
     res.json({
       success: true,
       data: reservation
@@ -68,6 +86,8 @@ const getReservationById = async (req, res, next) => {
 // POST create reservation
 const createReservation = async (req, res, next) => {
   try {
+    // El middleware verifyToken y authorizeReservation ya verificaron la autorización
+    
     // Check if property exists and room is available
     const property = await Property.findById(req.body.propertyId);
     if (!property) {
@@ -123,18 +143,8 @@ const createReservation = async (req, res, next) => {
 // PUT update reservation
 const updateReservation = async (req, res, next) => {
   try {
-    const updates = { ...req.body };
-
-    // Don't allow changing user or property
-    delete updates.userId;
-    delete updates.propertyId;
-
-    const reservation = await Reservation.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    ).populate('userId', 'name email')
-     .populate('propertyId', 'name address.city');
+    // Primero obtener la reserva
+    const reservation = await Reservation.findById(req.params.id);
 
     if (!reservation) {
       return res.status(404).json({
@@ -143,10 +153,37 @@ const updateReservation = async (req, res, next) => {
       });
     }
 
+    // Verificar autorización para actualizar
+    // Solo admin o el usuario dueño de la reserva
+    const canUpdate = req.user.role === 'admin' || 
+                     reservation.userId.toString() === req.user._id.toString();
+
+    if (!canUpdate) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this reservation'
+      });
+    }
+
+    const updates = { ...req.body };
+
+    // Si no es admin, no puede cambiar el userId
+    if (req.user.role !== 'admin') {
+      delete updates.userId;
+      delete updates.propertyId;
+    }
+
+    const updatedReservation = await Reservation.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    ).populate('userId', 'name email')
+     .populate('propertyId', 'name address.city');
+
     res.json({
       success: true,
       message: 'Reservation updated successfully',
-      data: reservation
+      data: updatedReservation
     });
   } catch (error) {
     next(error);
@@ -156,7 +193,7 @@ const updateReservation = async (req, res, next) => {
 // DELETE reservation
 const deleteReservation = async (req, res, next) => {
   try {
-    const reservation = await Reservation.findByIdAndDelete(req.params.id);
+    const reservation = await Reservation.findById(req.params.id);
 
     if (!reservation) {
       return res.status(404).json({
@@ -164,6 +201,19 @@ const deleteReservation = async (req, res, next) => {
         message: 'Reservation not found'
       });
     }
+
+    // Verificar autorización para eliminar
+    const canDelete = req.user.role === 'admin' || 
+                     reservation.userId.toString() === req.user._id.toString();
+
+    if (!canDelete) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this reservation'
+      });
+    }
+
+    await Reservation.findByIdAndDelete(req.params.id);
 
     res.json({
       success: true,

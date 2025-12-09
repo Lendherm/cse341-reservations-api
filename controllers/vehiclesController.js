@@ -64,20 +64,15 @@ const getVehicleById = async (req, res, next) => {
 // POST create vehicle
 const createVehicle = async (req, res, next) => {
   try {
+    // El middleware verifyToken ya verificó la autenticación
+    // El middleware authorizeVehicle ya verificó que el usuario sea admin/provider
+    
     // Check if provider exists
     const provider = await User.findById(req.body.providerId);
     if (!provider) {
       return res.status(404).json({
         success: false,
         message: 'Provider not found'
-      });
-    }
-
-    // Check if provider has provider role
-    if (provider.role !== 'provider' && provider.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only providers or admins can create vehicles'
       });
     }
 
@@ -98,11 +93,8 @@ const createVehicle = async (req, res, next) => {
 // PUT update vehicle
 const updateVehicle = async (req, res, next) => {
   try {
-    const vehicle = await Vehicle.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).populate('providerId', 'name email');
+    // Primero obtener el vehículo
+    const vehicle = await Vehicle.findById(req.params.id);
 
     if (!vehicle) {
       return res.status(404).json({
@@ -111,10 +103,29 @@ const updateVehicle = async (req, res, next) => {
       });
     }
 
+    // Verificar autorización para actualizar
+    // Solo admin, el provider dueño del vehículo, o usuarios con rol provider que sean dueños
+    const canUpdate = req.user.role === 'admin' || 
+                     vehicle.providerId.toString() === req.user._id.toString();
+
+    if (!canUpdate) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this vehicle'
+      });
+    }
+
+    // Actualizar el vehículo
+    const updatedVehicle = await Vehicle.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    ).populate('providerId', 'name email');
+
     res.json({
       success: true,
       message: 'Vehicle updated successfully',
-      data: vehicle
+      data: updatedVehicle
     });
   } catch (error) {
     next(error);

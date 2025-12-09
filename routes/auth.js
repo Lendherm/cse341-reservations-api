@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { register, login, getMe } = require('../controllers/authController');
-const { protect } = require('../middleware/auth');
+const { validateUser } = require('../middleware/validation');
+const { verifyToken } = require('../middleware/jwtAuth');
 
 /**
  * @swagger
@@ -32,6 +33,7 @@ const { protect } = require('../middleware/auth');
  *                 example: "John Doe"
  *               email:
  *                 type: string
+ *                 format: email
  *                 example: "john@example.com"
  *               passwordHash:
  *                 type: string
@@ -39,6 +41,10 @@ const { protect } = require('../middleware/auth');
  *               phone:
  *                 type: string
  *                 example: "+1234567890"
+ *               role:
+ *                 type: string
+ *                 enum: [user, admin, provider]
+ *                 default: "user"
  *     responses:
  *       201:
  *         description: User registered successfully
@@ -47,7 +53,7 @@ const { protect } = require('../middleware/auth');
  *       409:
  *         description: User already exists
  */
-router.post('/register', register);
+router.post('/register', validateUser, register);
 
 /**
  * @swagger
@@ -67,13 +73,14 @@ router.post('/register', register);
  *             properties:
  *               email:
  *                 type: string
+ *                 format: email
  *                 example: "john@example.com"
  *               passwordHash:
  *                 type: string
  *                 example: "password123"
  *     responses:
  *       200:
- *         description: User logged in successfully
+ *         description: Login successful
  *       401:
  *         description: Invalid credentials
  */
@@ -89,10 +96,10 @@ router.post('/login', login);
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: User profile retrieved
+ *         description: User profile retrieved successfully
  *       401:
- *         description: Not authorized
+ *         description: Not authenticated
  */
-router.get('/me', protect, getMe);
+router.get('/me', verifyToken, getMe);
 
 module.exports = router;
