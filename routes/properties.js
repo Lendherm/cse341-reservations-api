@@ -10,6 +10,9 @@ const {
 const { validateProperty, validateObjectId } = require('../middleware/validation');
 const validateOwnerExists = require('../middleware/validateOwnerExists');
 
+// Import authentication middleware
+const { requireAuth, requireProviderOrAdmin, isOwnerOrAdmin } = require('../middleware/auth');
+
 /**
  * @swagger
  * tags:
@@ -141,6 +144,8 @@ router.get('/:id', validateObjectId, getPropertyById);
  *   post:
  *     summary: Create a new property
  *     tags: [Properties]
+ *     security:
+ *       - sessionAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -256,10 +261,14 @@ router.get('/:id', validateObjectId, getPropertyById);
  *                   $ref: '#/components/schemas/Property'
  *       400:
  *         description: Validation error
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  *       500:
  *         description: Server error
  */
-router.post('/', validateProperty, validateOwnerExists, createProperty);
+router.post('/', requireAuth, requireProviderOrAdmin, validateProperty, validateOwnerExists, createProperty);
 
 /**
  * @swagger
@@ -267,6 +276,8 @@ router.post('/', validateProperty, validateOwnerExists, createProperty);
  *   put:
  *     summary: Update property
  *     tags: [Properties]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -375,13 +386,16 @@ router.post('/', validateProperty, validateOwnerExists, createProperty);
  *                   $ref: '#/components/schemas/Property'
  *       400:
  *         description: Validation error or invalid ID
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         description: Property not found
  *       500:
  *         description: Server error
  */
-
-router.put('/:id', validateObjectId, validateProperty, updateProperty);
+router.put('/:id', requireAuth, validateObjectId, isOwnerOrAdmin, validateProperty, updateProperty);
 
 /**
  * @swagger
@@ -389,6 +403,8 @@ router.put('/:id', validateObjectId, validateProperty, updateProperty);
  *   delete:
  *     summary: Delete property (soft delete by setting isActive to false)
  *     tags: [Properties]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -413,11 +429,15 @@ router.put('/:id', validateObjectId, validateProperty, updateProperty);
  *                   example: Property deleted successfully
  *       400:
  *         description: Invalid ID format
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         description: Property not found
  *       500:
  *         description: Server error
  */
-router.delete('/:id', validateObjectId, deleteProperty);
+router.delete('/:id', requireAuth, validateObjectId, isOwnerOrAdmin, deleteProperty);
 
 module.exports = router;

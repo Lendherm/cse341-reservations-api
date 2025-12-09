@@ -9,6 +9,9 @@ const {
 } = require('../controllers/vehiclesController');
 const { validateVehicleCreate, validateVehicleUpdate, validateObjectId } = require('../middleware/validation');
 
+// Import authentication middleware
+const { requireAuth, requireProviderOrAdmin, isOwnerOrAdmin } = require('../middleware/auth');
+
 /**
  * @swagger
  * tags:
@@ -188,7 +191,7 @@ router.get('/:id', validateObjectId, getVehicleById);
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  */
-router.post('/', validateVehicleCreate, createVehicle);
+router.post('/', requireAuth, requireProviderOrAdmin, validateVehicleCreate, createVehicle);
 
 /**
  * @swagger
@@ -246,7 +249,7 @@ router.post('/', validateVehicleCreate, createVehicle);
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
-router.put('/:id', validateObjectId, validateVehicleUpdate, updateVehicle);
+router.put('/:id', requireAuth, validateObjectId, isOwnerOrAdmin, validateVehicleUpdate, updateVehicle);
 
 /**
  * @swagger
@@ -278,6 +281,6 @@ router.put('/:id', validateObjectId, validateVehicleUpdate, updateVehicle);
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
-router.delete('/:id', validateObjectId, deleteVehicle);
+router.delete('/:id', requireAuth, validateObjectId, isOwnerOrAdmin, deleteVehicle);
 
 module.exports = router;

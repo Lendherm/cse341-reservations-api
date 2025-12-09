@@ -4,23 +4,19 @@ const userSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Name is required'],
-    trim: true,
-    minlength: [2, 'Name must be at least 2 characters long'],
-    maxlength: [100, 'Name must be less than 100 characters']
+    trim: true
   },
   email: {
     type: String,
     required: [true, 'Email is required'],
     unique: true,
     lowercase: true,
-    trim: true,
-    match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address']
+    trim: true
   },
   githubId: {
     type: String,
     unique: true,
-    sparse: true,
-    index: true
+    sparse: true // Para permitir usuarios sin GitHub ID
   },
   username: {
     type: String,
@@ -30,16 +26,29 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['user', 'admin', 'provider'],
     default: 'user'
+  },
+  avatar: {
+    type: String,
+    default: ''
   }
 }, {
   timestamps: true
 });
 
-// Indexes for better performance
-userSchema.index({ email: 1 });
-userSchema.index({ role: 1 });
+// Métodos de instancia para verificar roles
+userSchema.methods.isAdmin = function() {
+  return this.role === 'admin';
+};
 
-// Method to get public profile
+userSchema.methods.isProvider = function() {
+  return this.role === 'provider';
+};
+
+userSchema.methods.isUser = function() {
+  return this.role === 'user';
+};
+
+// Método para obtener perfil público (sin información sensible)
 userSchema.methods.getPublicProfile = function() {
   return {
     _id: this._id,
@@ -47,58 +56,8 @@ userSchema.methods.getPublicProfile = function() {
     email: this.email,
     username: this.username,
     role: this.role,
-    githubId: this.githubId,
-    createdAt: this.createdAt,
-    updatedAt: this.updatedAt
+    avatar: this.avatar
   };
 };
 
-// Method to check if user is admin
-userSchema.methods.isAdmin = function() {
-  return this.role === 'admin';
-};
-
-// Method to check if user is provider
-userSchema.methods.isProvider = function() {
-  return this.role === 'provider';
-};
-
-// Static method to find or create user from GitHub
-userSchema.statics.findOrCreateFromGitHub = async function(profile) {
-  const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
-  
-  // First search by githubId
-  let user = await this.findOne({ githubId: profile.id });
-  
-  if (user) {
-    return user;
-  }
-  
-  // If not, search by email
-  if (email) {
-    user = await this.findOne({ email: email.toLowerCase() });
-    if (user) {
-      // Update with githubId
-      user.githubId = profile.id;
-      user.username = profile.username;
-      await user.save();
-      return user;
-    }
-  }
-  
-  // Create new user
-  user = new this({
-    githubId: profile.id,
-    name: profile.displayName || profile.username,
-    email: email || `${profile.username}@github.com`,
-    username: profile.username,
-    role: 'user'
-  });
-  
-  await user.save();
-  return user;
-};
-
-const User = mongoose.model('User', userSchema);
-
-module.exports = User;
+module.exports = mongoose.model('User', userSchema);

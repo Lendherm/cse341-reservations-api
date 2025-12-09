@@ -9,6 +9,9 @@ const {
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
 
+// Import authentication middleware
+const { requireAuth, isOwnerOrAdmin } = require('../middleware/auth');
+
 /**
  * @swagger
  * tags:
@@ -74,7 +77,7 @@ const { validateReservationCreate, validateReservationUpdate, validateObjectId }
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */
-router.get('/', getAllReservations);
+router.get('/', requireAuth, getAllReservations);
 
 /**
  * @swagger
@@ -112,7 +115,7 @@ router.get('/', getAllReservations);
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
-router.get('/:id', validateObjectId, getReservationById);
+router.get('/:id', requireAuth, validateObjectId, getReservationById);
 
 /**
  * @swagger
@@ -176,7 +179,7 @@ router.get('/:id', validateObjectId, getReservationById);
  *       409:
  *         description: Conflict - Room already reserved for selected dates
  */
-router.post('/', validateReservationCreate, createReservation);
+router.post('/', requireAuth, validateReservationCreate, createReservation);
 
 /**
  * @swagger
@@ -234,7 +237,7 @@ router.post('/', validateReservationCreate, createReservation);
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
-router.put('/:id', validateObjectId, validateReservationUpdate, updateReservation);
+router.put('/:id', requireAuth, validateObjectId, isOwnerOrAdmin, validateReservationUpdate, updateReservation);
 
 /**
  * @swagger
@@ -266,6 +269,6 @@ router.put('/:id', validateObjectId, validateReservationUpdate, updateReservatio
  *       404:
  *         $ref: '#/components/responses/NotFound'
  */
-router.delete('/:id', validateObjectId, deleteReservation);
+router.delete('/:id', requireAuth, validateObjectId, isOwnerOrAdmin, deleteReservation);
 
 module.exports = router;

@@ -6,7 +6,8 @@ const requireAuth = (req, res, next) => {
   }
   return res.status(401).json({
     success: false,
-    message: 'Authentication required. Please log in to access this resource.'
+    message: 'Authentication required. Please log in with GitHub first.',
+    loginUrl: '/auth/github'
   });
 };
 
@@ -35,12 +36,18 @@ const isOwnerOrAdmin = (req, res, next) => {
     if (req.user.role === 'admin') {
       return next();
     }
-    // Check if user is the owner of the resource
-    const resourceId = req.params.id || req.body.ownerId;
-    if (req.user._id.toString() === resourceId) {
+    
+    // Para rutas con :id
+    if (req.params.id && req.params.id === req.user._id.toString()) {
+      return next();
+    }
+    
+    // Para recursos que tienen ownerId en el cuerpo
+    if (req.body.ownerId && req.body.ownerId === req.user._id.toString()) {
       return next();
     }
   }
+  
   return res.status(403).json({
     success: false,
     message: 'You do not have permission to access this resource.'
