@@ -1,7 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
 const {
   getAllVehicles,
   getVehicleById,
@@ -11,119 +9,108 @@ const {
 } = require('../controllers/vehiclesController');
 const { validateVehicleCreate, validateVehicleUpdate, validateObjectId } = require('../middleware/validation');
 
-// Middleware de autenticación que acepta GitHub session O JWT
-const requireAuth = async (req, res, next) => {
-  // 1. Verificar si hay sesión GitHub
+// Middleware de autenticación
+const requireAuth = (req, res, next) => {
   if (req.isAuthenticated()) {
-    req.user = req.user; // Already set by Passport
     return next();
   }
-
-  // 2. Verificar si hay token JWT
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-
-    try {
-      const decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET || 'default-jwt-secret'
-      );
-
-      const user = await User.findById(decoded.id).select('-passwordHash');
-
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found'
-        });
-      }
-
-      req.user = user; // Attach user to request
-      return next();
-    } catch (error) {
-      // Token inválido, continuar con error
-    }
-  }
-
-  // 3. Ningún método de autenticación funcionó
+  
   return res.status(401).json({
     success: false,
-    message: 'Authentication required. Please log in with GitHub or provide a valid JWT token.'
+    message: 'Authentication required. Please log in with GitHub first.',
+    loginUrl: '/auth/github'
   });
 };
 
 // Middleware de autorización para vehículos
 const authorizeVehicle = (req, res, next) => {
-  // Para rutas POST: verificar que el usuario sea admin o provider
+  // Si es admin, tiene acceso completo
+  if (req.user.role === 'admin') {
+    return next();
+  }
+  
+  // Para POST: solo admin o provider pueden crear vehículos
   if (req.method === 'POST') {
-    if (req.user.role !== 'admin' && req.user.role !== 'provider') {
+    if (req.user.role !== 'provider') {
       return res.status(403).json({
         success: false,
         message: 'Only administrators or providers can create vehicles'
       });
     }
-
-    // Asegurar que el providerId sea el mismo que el usuario autenticado (a menos que sea admin)
-    if (req.user.role !== 'admin' && req.body.providerId !== req.user._id.toString()) {
+    
+    // Providers solo pueden crear vehículos para sí mismos
+    if (req.body.providerId && req.body.providerId !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'You can only create vehicles for your own account'
       });
     }
   }
+  
   next();
 };
 
 /**
  * @swagger
  * tags:
- *   name: Vehicles
- *   description: Vehicle management endpoints
+ *   name: Vehículos
+ *   description: Gestión de vehículos para transporte
  */
 
 /**
  * @swagger
  * /api/vehicles:
  *   get:
- *     summary: Get all vehicles with filters
- *     tags: [Vehicles]
+ *     summary: Obtener todos los vehículos
+ *     tags: [Vehículos]
  *     parameters:
- *       - $ref: '#/components/parameters/pageParam'
- *       - $ref: '#/components/parameters/limitParam'
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Número de resultados por página
  *       - in: query
  *         name: type
  *         schema:
  *           type: string
  *           enum: [sedan, suv, van, luxury, economy]
- *         description: Filter by vehicle type
+ *         description: Filtrar por tipo de vehículo
  *       - in: query
  *         name: city
  *         schema:
  *           type: string
- *         description: Filter by city
+ *         description: Filtrar por ciudad
  *       - in: query
  *         name: minSeats
  *         schema:
  *           type: integer
- *           minimum: 1
- *         description: Minimum number of seats
- *       - in: query
- *         name: maxPrice
- *         schema:
- *           type: number
- *           minimum: 0
- *         description: Maximum price per day
+ *         description: Número mínimo de asientos
  *       - in: query
  *         name: available
  *         schema:
  *           type: boolean
- *         description: Filter by availability
+ *         description: Filtrar por disponibilidad
  *     responses:
  *       200:
- *         description: List of vehicles
- *       500:
- *         description: Server error
+ *         description: Lista de vehículos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Vehicle'
  */
 router.get('/', getAllVehicles);
 
@@ -131,8 +118,8 @@ router.get('/', getAllVehicles);
  * @swagger
  * /api/vehicles/{id}:
  *   get:
- *     summary: Get vehicle by ID
- *     tags: [Vehicles]
+ *     summary: Obtener un vehículo por ID
+ *     tags: [Vehículos]
  *     parameters:
  *       - in: path
  *         name: id
@@ -140,14 +127,12 @@ router.get('/', getAllVehicles);
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
+ *         description: ID de MongoDB del vehículo
  *     responses:
  *       200:
- *         description: Vehicle details
+ *         description: Detalles del vehículo
  *       404:
- *         description: Vehicle not found
- *       500:
- *         description: Server error
+ *         description: Vehículo no encontrado
  */
 router.get('/:id', validateObjectId, getVehicleById);
 
@@ -155,14 +140,9 @@ router.get('/:id', validateObjectId, getVehicleById);
  * @swagger
  * /api/vehicles:
  *   post:
- *     summary: Create a new vehicle
- *     tags: [Vehicles]
- *     security:
- *       - bearerAuth: []
- *     description: |
- *       Create a new vehicle.
- *       Requires authentication (GitHub OAuth session or JWT token).
- *       Only users with 'provider' or 'admin' role can create vehicles.
+ *     summary: Crear un nuevo vehículo
+ *     tags: [Vehículos]
+ *     description: Crear un nuevo vehículo. Requiere autenticación y rol de admin o provider.
  *     requestBody:
  *       required: true
  *       content:
@@ -203,32 +183,18 @@ router.get('/:id', validateObjectId, getVehicleById);
  *               licensePlate:
  *                 type: string
  *                 example: "ABC123"
- *               transmission:
+ *               city:
  *                 type: string
- *                 example: "automatic"
- *               fuelType:
- *                 type: string
- *                 example: "gasoline"
- *               location:
- *                 type: object
- *                 properties:
- *                   city:
- *                     type: string
- *                     example: "Miami"
- *                   airportCode:
- *                     type: string
- *                     example: "MIA"
+ *                 example: "Miami"
  *     responses:
  *       201:
- *         description: Vehicle created successfully
+ *         description: Vehículo creado exitosamente
  *       400:
- *         description: Validation error
+ *         $ref: '#/components/responses/ValidationError'
  *       401:
- *         description: Authentication required
+ *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Only providers or admins can create vehicles
- *       500:
- *         description: Server error
+ *         $ref: '#/components/responses/Forbidden'
  */
 router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVehicle);
 
@@ -236,14 +202,8 @@ router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVeh
  * @swagger
  * /api/vehicles/{id}:
  *   put:
- *     summary: Update vehicle
- *     tags: [Vehicles]
- *     security:
- *       - bearerAuth: []
- *     description: |
- *       Update an existing vehicle.
- *       Requires authentication (GitHub OAuth session or JWT token).
- *       Only admin or the vehicle owner can update vehicles.
+ *     summary: Actualizar un vehículo
+ *     tags: [Vehículos]
  *     parameters:
  *       - in: path
  *         name: id
@@ -251,7 +211,7 @@ router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVeh
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
+ *         description: ID de MongoDB del vehículo
  *     requestBody:
  *       required: true
  *       content:
@@ -261,32 +221,25 @@ router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVeh
  *             properties:
  *               make:
  *                 type: string
- *                 example: "Toyota"
  *               model:
  *                 type: string
- *                 example: "Camry"
+ *               year:
+ *                 type: integer
  *               pricePerDay:
  *                 type: number
- *                 example: 54.99
  *               isAvailable:
  *                 type: boolean
- *                 example: true
- *               features:
- *                 type: array
- *                 items:
- *                   type: string
- *                 example: ["GPS", "Bluetooth", "Backup Camera"]
  *     responses:
  *       200:
- *         description: Vehicle updated successfully
+ *         description: Vehículo actualizado exitosamente
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
  *       401:
- *         description: Authentication required
+ *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Not authorized to update this vehicle
+ *         $ref: '#/components/responses/Forbidden'
  *       404:
- *         description: Vehicle not found
- *       500:
- *         description: Server error
+ *         description: Vehículo no encontrado
  */
 router.put('/:id', requireAuth, validateObjectId, validateVehicleUpdate, updateVehicle);
 
@@ -294,14 +247,8 @@ router.put('/:id', requireAuth, validateObjectId, validateVehicleUpdate, updateV
  * @swagger
  * /api/vehicles/{id}:
  *   delete:
- *     summary: Delete vehicle
- *     tags: [Vehicles]
- *     security:
- *       - bearerAuth: []
- *     description: |
- *       Delete a vehicle by ID.
- *       Requires authentication (GitHub OAuth session or JWT token).
- *       Only admin or the vehicle owner can delete vehicles.
+ *     summary: Eliminar un vehículo
+ *     tags: [Vehículos]
  *     parameters:
  *       - in: path
  *         name: id
@@ -309,18 +256,16 @@ router.put('/:id', requireAuth, validateObjectId, validateVehicleUpdate, updateV
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
+ *         description: ID de MongoDB del vehículo
  *     responses:
  *       200:
- *         description: Vehicle deleted successfully
+ *         description: Vehículo eliminado exitosamente
  *       401:
- *         description: Authentication required
+ *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Not authorized to delete this vehicle
+ *         $ref: '#/components/responses/Forbidden'
  *       404:
- *         description: Vehicle not found
- *       500:
- *         description: Server error
+ *         description: Vehículo no encontrado
  */
 router.delete('/:id', requireAuth, validateObjectId, deleteVehicle);
 

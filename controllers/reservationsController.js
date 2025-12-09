@@ -1,6 +1,5 @@
 const Reservation = require('../models/Reservation');
 const Property = require('../models/Property');
-const User = require('../models/User');
 
 // GET all reservations with filters
 const getAllReservations = async (req, res, next) => {
@@ -10,18 +9,20 @@ const getAllReservations = async (req, res, next) => {
     const skip = (page - 1) * limit;
     const { userId, propertyId, status, startDate, endDate } = req.query;
 
-    // Si el usuario no es admin y no especificó userId, mostrar solo sus reservas
+    // Construir filtro
     let filter = {};
-    if (req.isAuthenticated() && req.user.role !== 'admin') {
-      // Si no es admin, solo puede ver sus propias reservas
+    
+    // Si no es admin, solo puede ver sus propias reservas
+    if (!req.user.isAdmin()) {
       filter.userId = req.user._id;
+    } else {
+      // Si es admin y se especifica userId, usar ese filtro
+      if (userId) {
+        filter.userId = userId;
+      }
     }
     
-    // Aplicar filtros adicionales
-    if (userId && req.isAuthenticated() && (req.user.role === 'admin' || userId === req.user._id.toString())) {
-      filter.userId = userId;
-    }
-    
+    // Otros filtros
     if (propertyId) filter.propertyId = propertyId;
     if (status) filter.status = status;
     if (startDate) filter.startDate = { $gte: new Date(startDate) };
@@ -65,8 +66,8 @@ const getReservationById = async (req, res, next) => {
       });
     }
 
-    // Verificar que el usuario tenga acceso a esta reserva
-    if (req.isAuthenticated() && req.user.role !== 'admin' && 
+    // Verificar autorización
+    if (!req.user.isAdmin() && 
         reservation.userId._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -86,14 +87,13 @@ const getReservationById = async (req, res, next) => {
 // POST create reservation
 const createReservation = async (req, res, next) => {
   try {
-    // El middleware requireAuth ya verificó la autenticación
-    // Usar el userId del usuario autenticado (ignorar cualquier userId en el body)
+    // Crear datos de reserva con el userId del usuario autenticado
     const reservationData = {
       ...req.body,
-      userId: req.user._id  // Forzar el userId del usuario autenticado
+      userId: req.user._id  // Siempre usar el usuario autenticado
     };
 
-    // Check if property exists and room is available
+    // Verificar que la propiedad exista
     const property = await Property.findById(reservationData.propertyId);
     if (!property) {
       return res.status(404).json({
@@ -102,28 +102,56 @@ const createReservation = async (req, res, next) => {
       });
     }
 
-    // Check for date conflicts
+    // Verificar que la habitación exista en la propiedad
+    const room = property.rooms.find(r => r.roomId === reservationData.roomId);
+    if (!room) {
+      return res.status(400).json({
+        success: false,
+        message: 'Room not found in this property'
+      });
+    }
+
+    // Verificar que la habitación esté disponible
+    if (!room.isAvailable) {
+      return res.status(400).json({
+        success: false,
+        message: 'Room is not available'
+      });
+    }
+
+    // Verificar que el número de huéspedes no exceda la capacidad
+    if (reservationData.numGuests > room.capacity) {
+      return res.status(400).json({
+        success: false,
+        message: `Number of guests exceeds room capacity (max: ${room.capacity})`
+      });
+    }
+
+    // Verificar conflictos de fechas
     const conflictingReservation = await Reservation.findOne({
       propertyId: reservationData.propertyId,
       roomId: reservationData.roomId,
       status: { $in: ['confirmed', 'pending'] },
       $or: [
-        { startDate: { $lt: new Date(reservationData.endDate) }, 
-          endDate: { $gt: new Date(reservationData.startDate) } }
+        {
+          startDate: { $lt: new Date(reservationData.endDate) },
+          endDate: { $gt: new Date(reservationData.startDate) }
+        }
       ]
     });
 
     if (conflictingReservation) {
       return res.status(409).json({
         success: false,
-        message: 'Room is not available for the selected dates'
+        message: 'Room is already reserved for the selected dates'
       });
     }
 
+    // Crear la reserva
     const reservation = new Reservation(reservationData);
     const savedReservation = await reservation.save();
 
-    // Populate references
+    // Poblar referencias para la respuesta
     await savedReservation.populate('userId', 'name email');
     await savedReservation.populate('propertyId', 'name address.city');
 
@@ -140,7 +168,7 @@ const createReservation = async (req, res, next) => {
 // PUT update reservation
 const updateReservation = async (req, res, next) => {
   try {
-    // Primero obtener la reserva
+    // Obtener la reserva
     const reservation = await Reservation.findById(req.params.id);
 
     if (!reservation) {
@@ -150,26 +178,34 @@ const updateReservation = async (req, res, next) => {
       });
     }
 
-    // Verificar autorización para actualizar
-    // Solo admin o el usuario dueño de la reserva
-    const canUpdate = req.user.role === 'admin' || 
-                     reservation.userId.toString() === req.user._id.toString();
-
-    if (!canUpdate) {
+    // Verificar autorización
+    if (!req.user.isAdmin() && 
+        reservation.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this reservation'
       });
     }
 
+    // Preparar actualizaciones
     const updates = { ...req.body };
 
-    // Si no es admin, no puede cambiar el userId
-    if (req.user.role !== 'admin') {
+    // Si no es admin, no puede cambiar ciertos campos
+    if (!req.user.isAdmin()) {
       delete updates.userId;
       delete updates.propertyId;
+      delete updates.roomId;
+      
+      // Usuarios regulares solo pueden cancelar sus reservas
+      if (updates.status && updates.status !== 'cancelled') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only administrators can change reservation status'
+        });
+      }
     }
 
+    // Actualizar la reserva
     const updatedReservation = await Reservation.findByIdAndUpdate(
       req.params.id,
       updates,
@@ -199,14 +235,21 @@ const deleteReservation = async (req, res, next) => {
       });
     }
 
-    // Verificar autorización para eliminar
-    const canDelete = req.user.role === 'admin' || 
-                     reservation.userId.toString() === req.user._id.toString();
-
-    if (!canDelete) {
+    // Verificar autorización
+    if (!req.user.isAdmin() && 
+        reservation.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this reservation'
+      });
+    }
+
+    // Solo admin puede eliminar reservas confirmadas/completadas
+    if (!req.user.isAdmin() && 
+        (reservation.status === 'confirmed' || reservation.status === 'completed')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can delete confirmed or completed reservations'
       });
     }
 
@@ -217,8 +260,9 @@ const deleteReservation = async (req, res, next) => {
       message: 'Reservation deleted successfully',
       deletedReservation: {
         id: reservation._id,
-        userId: reservation.userId,
-        propertyId: reservation.propertyId
+        propertyId: reservation.propertyId,
+        roomId: reservation.roomId,
+        status: reservation.status
       }
     });
   } catch (error) {

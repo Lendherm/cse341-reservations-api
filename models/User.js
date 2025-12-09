@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   name: {
@@ -7,195 +6,99 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Name is required'],
     trim: true,
     minlength: [2, 'Name must be at least 2 characters long'],
-    maxlength: [100, 'Name cannot exceed 100 characters']
+    maxlength: [100, 'Name must be less than 100 characters']
   },
-
   email: {
     type: String,
-    required: function () {
-      return !this.githubId; // Email optional for OAuth users
-    },
+    required: [true, 'Email is required'],
     unique: true,
     lowercase: true,
     trim: true,
-    sparse: true, // Required so null emails don't break `unique`
-    match: [
-      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-      'Please enter a valid email'
-    ]
+    match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address']
   },
-
-  passwordHash: {
+  githubId: {
     type: String,
-    required: function () {
-      // Only for non-OAuth new accounts
-      return !this.githubId && this.isNew;
-    },
-    minlength: [6, 'Password hash must be at least 6 characters long'],
-    select: false
+    unique: true,
+    sparse: true,
+    index: true
   },
-
-  phone: {
+  username: {
     type: String,
-    trim: true,
-    match: [/^\+?[\d\s\-\(\)]{10,}$/, 'Please enter a valid phone number']
+    trim: true
   },
-
   role: {
     type: String,
     enum: ['user', 'admin', 'provider'],
     default: 'user'
-  },
-
-  // OAuth fields
-  githubId: {
-    type: String,
-    unique: true,
-    sparse: true
-  },
-  githubUsername: { type: String, sparse: true },
-  githubProfileUrl: { type: String, sparse: true },
-  avatarUrl: { type: String },
-
-  // Account status
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-
-  lastLogin: {
-    type: Date
-  },
-
-  // Email verification (non-OAuth)
-  isEmailVerified: {
-    type: Boolean,
-    default: false
   }
-},
-{
-  timestamps: true,
-  toJSON: {
-    transform(doc, ret) {
-      delete ret.passwordHash;
-      return ret;
-    }
-  },
-  toObject: {
-    transform(doc, ret) {
-      delete ret.passwordHash;
-      return ret;
-    }
-  }
+}, {
+  timestamps: true
 });
 
-// Indexes
-userSchema.index({ githubId: 1 });
-userSchema.index({ email: 1 }, { unique: true, sparse: true });
+// Índices para mejor rendimiento
+userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
-userSchema.index({ createdAt: -1 });
 
-// Virtuals
-userSchema.virtual('displayName').get(function () {
-  return this.name;
-});
-
-userSchema.virtual('isOAuthUser').get(function () {
-  return !!this.githubId;
-});
-
-// Password hashing
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('passwordHash') || !this.passwordHash) return next();
-
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Compare password
-userSchema.methods.comparePassword = async function (candidatePassword) {
-  if (!this.passwordHash) return false;
-  return await bcrypt.compare(candidatePassword, this.passwordHash);
+// Método para obtener perfil público
+userSchema.methods.getPublicProfile = function() {
+  return {
+    _id: this._id,
+    name: this.name,
+    email: this.email,
+    username: this.username,
+    role: this.role,
+    githubId: this.githubId,
+    createdAt: this.createdAt,
+    updatedAt: this.updatedAt
+  };
 };
 
-// Find by email
-userSchema.statics.findByEmail = function (email) {
-  return this.findOne({ email: email.toLowerCase() });
+// Método para verificar si es admin
+userSchema.methods.isAdmin = function() {
+  return this.role === 'admin';
 };
 
-// OAuth: find or create
-userSchema.statics.findOrCreateFromGitHub = async function (profile) {
-  // 1. Try to find by GitHub ID
+// Método para verificar si es provider
+userSchema.methods.isProvider = function() {
+  return this.role === 'provider';
+};
+
+// Static method para buscar o crear usuario desde GitHub
+userSchema.statics.findOrCreateFromGitHub = async function(profile) {
+  const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
+  
+  // Primero buscar por githubId
   let user = await this.findOne({ githubId: profile.id });
-
-  if (user) return user;
-
-  // 2. Try to match an existing account by email
-  const email = profile.emails?.[0]?.value;
-
+  
+  if (user) {
+    return user;
+  }
+  
+  // Si no, buscar por email
   if (email) {
-    user = await this.findOne({ email });
-
+    user = await this.findOne({ email: email.toLowerCase() });
     if (user) {
-      // Link GitHub to existing account
+      // Actualizar con githubId
       user.githubId = profile.id;
-      user.githubUsername = profile.username;
-      user.githubProfileUrl = profile.profileUrl;
-      user.avatarUrl = profile.photos?.[0]?.value;
+      user.username = profile.username;
       await user.save();
       return user;
     }
   }
-
-  // 3. Create new OAuth user
+  
+  // Crear nuevo usuario
   user = new this({
-    name: profile.displayName || profile.username,
-    email: email || `${profile.username}@github.com`, // fallback
     githubId: profile.id,
-    githubUsername: profile.username,
-    githubProfileUrl: profile.profileUrl,
-    avatarUrl: profile.photos?.[0]?.value,
-    isEmailVerified: true,
-    isActive: true
+    name: profile.displayName || profile.username,
+    email: email || `${profile.username}@github.com`,
+    username: profile.username,
+    role: 'user'
   });
-
+  
   await user.save();
   return user;
 };
 
-// Check roles
-userSchema.methods.isAdmin = function () {
-  return this.role === 'admin';
-};
+const User = mongoose.model('User', userSchema);
 
-userSchema.methods.isProvider = function () {
-  return this.role === 'provider';
-};
-
-// Last login
-userSchema.methods.updateLastLogin = async function () {
-  this.lastLogin = new Date();
-  return this.save();
-};
-
-// Public profile
-userSchema.methods.getPublicProfile = function () {
-  return {
-    id: this._id,
-    name: this.name,
-    email: this.email,
-    role: this.role,
-    avatarUrl: this.avatarUrl,
-    githubUsername: this.githubUsername,
-    isOAuthUser: this.isOAuthUser,
-    isActive: this.isActive,
-    createdAt: this.createdAt
-  };
-};
-
-module.exports = mongoose.model('User', userSchema);
+module.exports = User;

@@ -15,7 +15,7 @@ const validateObjectId = (req, res, next) => {
 };
 
 // -----------------------------
-// Validate Create User (POST)
+// Validate User Data
 // -----------------------------
 const validateUser = (req, res, next) => {
   const schema = Joi.object({
@@ -23,7 +23,10 @@ const validateUser = (req, res, next) => {
     email: Joi.string().email().required(),
     phone: Joi.string().min(8).max(20).optional(),
     role: Joi.string().valid("user", "admin", "provider").default("user"),
-    passwordHash: Joi.string().min(6).required()
+    
+    // Campos específicos de GitHub OAuth (no se validan en input)
+    githubId: Joi.forbidden(),
+    username: Joi.forbidden()
   });
 
   const { error } = schema.validate(req.body, { abortEarly: false });
@@ -40,7 +43,7 @@ const validateUser = (req, res, next) => {
 };
 
 // -----------------------------
-// Validate Update User (PUT)
+// Validate User Update
 // -----------------------------
 const validateUserUpdate = (req, res, next) => {
   const schema = Joi.object({
@@ -49,13 +52,11 @@ const validateUserUpdate = (req, res, next) => {
     phone: Joi.string().min(8).max(20).optional(),
     role: Joi.string().valid("user", "admin", "provider").optional(),
 
-    // Forbidden fields
-    passwordHash: Joi.forbidden().messages({
-      "any.unknown": "Password cannot be updated here"
+    // Campos prohibidos en actualización
+    githubId: Joi.forbidden().messages({
+      "any.unknown": "GitHub ID cannot be updated manually"
     }),
-
-    password: Joi.forbidden(),
-    githubId: Joi.forbidden()
+    username: Joi.forbidden()
   });
 
   const { error } = schema.validate(req.body, { abortEarly: false });
@@ -121,11 +122,10 @@ const validateProperty = (req, res, next) => {
 };
 
 // -----------------------------
-// Validate Reservation CREATE (POST)
+// Validate Reservation CREATE
 // -----------------------------
 const validateReservationCreate = (req, res, next) => {
   const schema = Joi.object({
-    userId: Joi.string().required(),
     propertyId: Joi.string().required(),
     roomId: Joi.string().required(),
     startDate: Joi.date().greater('now').required(),
@@ -133,6 +133,9 @@ const validateReservationCreate = (req, res, next) => {
     numGuests: Joi.number().integer().min(1).required(),
     totalAmount: Joi.number().min(0).required(),
     specialRequests: Joi.string().max(500).allow(''),
+    
+    // userId no se envía, se obtiene del usuario autenticado
+    userId: Joi.forbidden()
   });
 
   const { error } = schema.validate(req.body, { abortEarly: false });
@@ -149,15 +152,10 @@ const validateReservationCreate = (req, res, next) => {
 };
 
 // -----------------------------
-// Validate Reservation UPDATE (PUT)
+// Validate Reservation UPDATE
 // -----------------------------
 const validateReservationUpdate = (req, res, next) => {
   const schema = Joi.object({
-    userId: Joi.string(),
-    propertyId: Joi.string(),
-    resourceId: Joi.string(),
-    reservationType: Joi.string(),
-    roomId: Joi.string(),
     startDate: Joi.date(),
     endDate: Joi.date().greater(Joi.ref('startDate')),
     numGuests: Joi.number().integer().min(1),
@@ -165,9 +163,12 @@ const validateReservationUpdate = (req, res, next) => {
     status: Joi.string().valid('pending', 'confirmed', 'cancelled', 'completed'),
     paymentStatus: Joi.string().valid('pending', 'paid', 'refunded', 'failed'),
     specialRequests: Joi.string().max(500).allow(''),
-  })
-    .min(1)
-    .unknown(true); // <-- PERMITE CAMPOS NO ENUMERADOS
+    
+    // Campos que no se pueden cambiar
+    userId: Joi.forbidden(),
+    propertyId: Joi.forbidden(),
+    roomId: Joi.forbidden()
+  }).min(1);
 
   const { error } = schema.validate(req.body, { abortEarly: false });
 
@@ -182,9 +183,8 @@ const validateReservationUpdate = (req, res, next) => {
   next();
 };
 
-
 // -----------------------------
-// Validate Vehicle CREATE (POST)
+// Validate Vehicle CREATE
 // -----------------------------
 const validateVehicleCreate = (req, res, next) => {
   const schema = Joi.object({
@@ -221,7 +221,7 @@ const validateVehicleCreate = (req, res, next) => {
 };
 
 // -----------------------------
-// Validate Vehicle UPDATE (PUT)
+// Validate Vehicle UPDATE
 // -----------------------------
 const validateVehicleUpdate = (req, res, next) => {
   const schema = Joi.object({
@@ -239,9 +239,9 @@ const validateVehicleUpdate = (req, res, next) => {
     }).optional(),
     features: Joi.array().items(Joi.string()).optional(),
     isAvailable: Joi.boolean().optional(),
-    licensePlate: Joi.string().optional(), // Usually not changed, but allowed
+    licensePlate: Joi.string().optional(),
     images: Joi.array().items(Joi.string()).optional()
-  }).min(1); // At least one field required for update
+  }).min(1);
 
   const { error } = schema.validate(req.body, { abortEarly: false });
 
@@ -257,15 +257,41 @@ const validateVehicleUpdate = (req, res, next) => {
 };
 
 // -----------------------------
-// EXPORTS
+// Validate Pagination
 // -----------------------------
+const validatePagination = (req, res, next) => {
+  const schema = Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10)
+  });
+
+  const { error } = schema.validate(req.query, { abortEarly: false });
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: error.details.map(d => d.message)
+    });
+  }
+
+  // Set validated values
+  req.pagination = {
+    page: parseInt(req.query.page) || 1,
+    limit: parseInt(req.query.limit) || 10
+  };
+
+  next();
+};
+
 module.exports = {
   validateUser,
   validateUserUpdate,
   validateProperty,
   validateReservationCreate,
   validateReservationUpdate,
-  validateVehicleCreate,    // Changed from validateVehicle
-  validateVehicleUpdate,    // New
-  validateObjectId
+  validateVehicleCreate,
+  validateVehicleUpdate,
+  validateObjectId,
+  validatePagination
 };

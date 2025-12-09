@@ -1,7 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
 const {
   getAllReservations,
   getReservationById,
@@ -11,135 +9,69 @@ const {
 } = require('../controllers/reservationsController');
 const { validateReservationCreate, validateReservationUpdate, validateObjectId } = require('../middleware/validation');
 
-// Middleware de autenticación que acepta GitHub session O JWT
-const requireAuth = async (req, res, next) => {
-  // 1. Verificar si hay sesión GitHub
+// Middleware de autenticación
+const requireAuth = (req, res, next) => {
   if (req.isAuthenticated()) {
-    req.user = req.user; // Already set by Passport
     return next();
   }
-
-  // 2. Verificar si hay token JWT
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-
-    try {
-      const decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET || 'default-jwt-secret'
-      );
-
-      const user = await User.findById(decoded.id).select('-passwordHash');
-
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found'
-        });
-      }
-
-      req.user = user; // Attach user to request
-      return next();
-    } catch (error) {
-      // Token inválido, continuar con error
-    }
-  }
-
-  // 3. Ningún método de autenticación funcionó
+  
   return res.status(401).json({
     success: false,
-    message: 'Authentication required. Please log in with GitHub or provide a valid JWT token.'
+    message: 'Authentication required. Please log in with GitHub first.',
+    loginUrl: '/auth/github'
   });
 };
 
-// Middleware de autorización para reservaciones
+// Middleware de autorización para reservas
 const authorizeReservation = (req, res, next) => {
-  // Para POST: solo puedes crear reservas para ti mismo (a menos que seas admin)
-  if (req.method === 'POST') {
-    // El userId debe coincidir con el usuario autenticado o ser admin
-    if (req.user.role !== 'admin' && req.body.userId && req.body.userId !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only create reservations for yourself'
-      });
-    }
+  // Si es admin, tiene acceso completo
+  if (req.user.role === 'admin') {
+    return next();
   }
+  
+  // Para POST: el usuario solo puede crear reservas para sí mismo
+  if (req.method === 'POST') {
+    // El userId se establece automáticamente desde req.user._id en el controlador
+    return next();
+  }
+  
+  // Para otras operaciones, la autorización se maneja en el controlador
   next();
 };
 
 /**
  * @swagger
- * tags:
- *   name: Reservations
- *   description: Reservation management endpoints
- */
-
-/**
- * @swagger
  * /api/reservations:
  *   get:
- *     summary: Get all reservations with filters
- *     tags: [Reservations]
- *     description: |
- *       Returns a list of reservations.
- *       If authenticated, returns user's reservations.
- *       If not authenticated, returns public reservations (if any) or empty.
- *     parameters:
- *       - $ref: '#/components/parameters/pageParam'
- *       - $ref: '#/components/parameters/limitParam'
- *       - in: query
- *         name: userId
- *         schema:
- *           type: string
- *         description: Filter by user ID (admin only)
- *       - in: query
- *         name: propertyId
- *         schema:
- *           type: string
- *         description: Filter by property ID
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [pending, confirmed, cancelled, completed]
- *         description: Filter by status
- *       - in: query
- *         name: startDate
- *         schema:
- *           type: string
- *           format: date
- *         description: Filter by start date (YYYY-MM-DD)
- *       - in: query
- *         name: endDate
- *         schema:
- *           type: string
- *           format: date
- *         description: Filter by end date (YYYY-MM-DD)
+ *     summary: Obtener todas las reservas
+ *     tags: [Reservas]
+ *     description: Los administradores ven todas las reservas, los usuarios solo las suyas.
  *     responses:
  *       200:
- *         description: List of reservations
- *       500:
- *         description: Server error
+ *         description: Lista de reservas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Reservation'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
  */
-router.get('/', (req, res, next) => {
-  // Si el usuario está autenticado, podemos filtrar por su ID
-  // pero dejamos que el controlador maneje la lógica
-  if (req.isAuthenticated()) {
-    req.userId = req.user._id;
-  }
-  getAllReservations(req, res, next);
-});
+router.get('/', requireAuth, getAllReservations);
 
 /**
  * @swagger
  * /api/reservations/{id}:
  *   get:
- *     summary: Get reservation by ID
- *     tags: [Reservations]
- *     description: |
- *       Returns a single reservation by ID.
- *       Users can only view their own reservations unless they are admin.
+ *     summary: Obtener una reserva por ID
+ *     tags: [Reservas]
  *     parameters:
  *       - in: path
  *         name: id
@@ -147,31 +79,24 @@ router.get('/', (req, res, next) => {
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
+ *         description: ID de MongoDB de la reserva
  *     responses:
  *       200:
- *         description: Reservation details
- *       403:
- *         description: Not authorized to view this reservation
+ *         description: Detalles de la reserva
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
  *       404:
- *         description: Reservation not found
- *       500:
- *         description: Server error
+ *         description: Reserva no encontrada
  */
-router.get('/:id', validateObjectId, getReservationById);
+router.get('/:id', requireAuth, validateObjectId, getReservationById);
 
 /**
  * @swagger
  * /api/reservations:
  *   post:
- *     summary: Create a new reservation
- *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
- *     description: |
- *       Create a new reservation.
- *       Requires authentication (GitHub OAuth session or JWT token).
- *       The userId will be automatically set to the authenticated user's ID.
+ *     summary: Crear una nueva reserva
+ *     tags: [Reservas]
+ *     description: Crea una nueva reserva. Requiere autenticación con GitHub.
  *     requestBody:
  *       required: true
  *       content:
@@ -186,9 +111,6 @@ router.get('/:id', validateObjectId, getReservationById);
  *               - numGuests
  *               - totalAmount
  *             properties:
- *               userId:
- *                 type: string
- *                 example: "650a1b2c3d4e5f0012345678"
  *               propertyId:
  *                 type: string
  *                 example: "650a1b2c3d4e5f0012345679"
@@ -211,16 +133,18 @@ router.get('/:id', validateObjectId, getReservationById);
  *                 example: 799.96
  *               specialRequests:
  *                 type: string
- *                 example: "Please provide early check-in if possible"
+ *                 example: "Por favor, check-in temprano si es posible"
  *     responses:
  *       201:
- *         description: Reservation created successfully
+ *         description: Reserva creada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
  *       401:
- *         description: Authentication required
- *       403:
- *         description: Not authorized to create reservation
- *       409:
- *         description: Room not available for selected dates
+ *         $ref: '#/components/responses/Unauthorized'
  */
 router.post('/', requireAuth, authorizeReservation, validateReservationCreate, createReservation);
 
@@ -228,14 +152,8 @@ router.post('/', requireAuth, authorizeReservation, validateReservationCreate, c
  * @swagger
  * /api/reservations/{id}:
  *   put:
- *     summary: Update a reservation by ID
- *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
- *     description: |
- *       Update an existing reservation.
- *       Requires authentication (GitHub OAuth session or JWT token).
- *       Users can only update their own reservations unless they are admin.
+ *     summary: Actualizar una reserva
+ *     tags: [Reservas]
  *     parameters:
  *       - in: path
  *         name: id
@@ -243,30 +161,40 @@ router.post('/', requireAuth, authorizeReservation, validateReservationCreate, c
  *         schema:
  *           type: string
  *           pattern: "^[0-9a-fA-F]{24}$"
- *         description: MongoDB ObjectId of the reservation to update
+ *         description: ID de MongoDB de la reserva a actualizar
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Reservation'
- *           example:
- *             startDate: "2024-12-20"
- *             endDate: "2024-12-25"
- *             numGuests: 2
- *             totalAmount: 999.95
- *             status: "confirmed"
+ *             type: object
+ *             properties:
+ *               startDate:
+ *                 type: string
+ *                 format: date
+ *               endDate:
+ *                 type: string
+ *                 format: date
+ *               numGuests:
+ *                 type: integer
+ *               totalAmount:
+ *                 type: number
+ *               status:
+ *                 type: string
+ *                 enum: [pending, confirmed, cancelled, completed]
+ *               specialRequests:
+ *                 type: string
  *     responses:
  *       200:
- *         description: Reservation updated successfully
+ *         description: Reserva actualizada exitosamente
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
- *         description: Authentication required
+ *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Not authorized to update this reservation
+ *         $ref: '#/components/responses/Forbidden'
  *       404:
- *         $ref: '#/components/responses/NotFound'
+ *         description: Reserva no encontrada
  */
 router.put('/:id', requireAuth, validateObjectId, validateReservationUpdate, updateReservation);
 
@@ -274,14 +202,8 @@ router.put('/:id', requireAuth, validateObjectId, validateReservationUpdate, upd
  * @swagger
  * /api/reservations/{id}:
  *   delete:
- *     summary: Delete reservation
- *     tags: [Reservations]
- *     security:
- *       - bearerAuth: []
- *     description: |
- *       Delete a reservation by ID.
- *       Requires authentication (GitHub OAuth session or JWT token).
- *       Users can only delete their own reservations unless they are admin.
+ *     summary: Eliminar una reserva
+ *     tags: [Reservas]
  *     parameters:
  *       - in: path
  *         name: id
@@ -289,14 +211,16 @@ router.put('/:id', requireAuth, validateObjectId, validateReservationUpdate, upd
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: Valid MongoDB ObjectId
+ *         description: ID de MongoDB de la reserva a eliminar
  *     responses:
  *       200:
- *         description: Reservation deleted successfully
+ *         description: Reserva eliminada exitosamente
  *       401:
- *         description: Authentication required
+ *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Not authorized to delete this reservation
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         description: Reserva no encontrada
  */
 router.delete('/:id', requireAuth, validateObjectId, deleteReservation);
 

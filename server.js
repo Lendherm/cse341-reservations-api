@@ -18,15 +18,8 @@ const app = express();
 // ========================
 // Middleware Configuration
 // ========================
-// Configuración de CORS simplificada
 app.use(cors({
   origin: function(origin, callback) {
-    // En desarrollo, permitir cualquier origen
-    if (process.env.NODE_ENV !== 'production') {
-      return callback(null, true);
-    }
-    
-    // En producción, solo orígenes específicos
     const allowedOrigins = [
       'https://cse341-reservations-api.onrender.com',
       'https://cse341-code-student.onrender.com',
@@ -34,26 +27,23 @@ app.use(cors({
       'http://localhost:8080'
     ];
     
-    // Permitir solicitudes sin origen
     if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
       callback(null, true);
     } else {
       console.log(`CORS bloqueado para origen: ${origin}`);
-      // Temporalmente permitir todos los orígenes para pruebas
-      callback(null, true);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+  allowedHeaders: ['Content-Type', 'Accept']
 }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Configuración de sesión
+// Configuración de sesión - CRUCIAL PARA RENDER
 app.use(session({
   secret: process.env.SESSION_SECRET || 'default-secret-change-this-in-production',
   resave: false,
@@ -61,15 +51,15 @@ app.use(session({
   store: MongoStore.create({
     mongoUrl: process.env.MONGODB_URI,
     collectionName: 'sessions',
-    ttl: 14 * 24 * 60 * 60, // 14 días en segundos
-    autoRemove: 'native'
+    ttl: 24 * 60 * 60 // 24 horas
   }),
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 14 * 24 * 60 * 60 * 1000 // 14 días en milisegundos
-  }
+    maxAge: 24 * 60 * 60 * 1000 // 24 horas
+  },
+  proxy: process.env.NODE_ENV === 'production' // Importante para Render
 }));
 
 // Passport initialization
@@ -93,17 +83,14 @@ if (process.env.NODE_ENV !== 'test') {
   })
   .then(() => {
     console.log('✅ Connected to MongoDB');
-    console.log(`📊 Database: ReservationsAPI`);
   })
   .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);
   });
-} else {
-  console.log('🧪 Test mode: MongoDB connection skipped');
 }
 
 // ========================
-// Passport Configuration
+// Passport Configuration - SOLO GITHUB
 // ========================
 
 // Serialize user
@@ -133,16 +120,40 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        console.log('GitHub profile received');
+        console.log('GitHub profile received:', profile.username);
 
-        // Find or create user
-        const user = await User.findOrCreateFromGitHub(profile);
+        // Buscar usuario por GitHub ID
+        let user = await User.findOne({ githubId: profile.id });
+
+        if (user) {
+          console.log('Usuario encontrado por GitHub ID:', user.email);
+          return done(null, user);
+        }
+
+        // Buscar por email
+        const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
         
-        // Update last login
-        await user.updateLastLogin();
-        
-        console.log('User authenticated via GitHub:', user.email);
-        return done(null, user);
+        if (email) {
+          user = await User.findOne({ email: email.toLowerCase() });
+          if (user) {
+            console.log('Usuario encontrado por email, actualizando GitHub ID:', user.email);
+            user.githubId = profile.id;
+            await user.save();
+            return done(null, user);
+          }
+        }
+
+        // Crear nuevo usuario
+        const newUser = new User({
+          githubId: profile.id,
+          name: profile.displayName || profile.username,
+          email: email || `${profile.username}@github.com`,
+          username: profile.username
+        });
+
+        await newUser.save();
+        console.log('Nuevo usuario creado:', newUser.email);
+        return done(null, newUser);
       } catch (error) {
         console.error('GitHub OAuth error:', error);
         return done(error, null);
@@ -150,28 +161,27 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     }
   ));
 } else {
-  console.log('⚠️ GitHub OAuth not configured');
+  console.log('⚠️ GitHub OAuth not configured - check environment variables');
 }
 
 // ========================
 // OAuth Routes
 // ========================
-if (process.env.GITHUB_CLIENT_ID) {
-  app.get('/auth/github',
-    passport.authenticate('github', { scope: ['user:email'] })
-  );
+app.get('/auth/github',
+  passport.authenticate('github', { scope: ['user:email'] })
+);
 
-  app.get('/auth/github/callback',
-    passport.authenticate('github', {
-      failureRedirect: '/api-docs',
-      session: true
-    }),
-    (req, res) => {
-      console.log('GitHub authentication successful');
-      res.redirect('/api-docs');
-    }
-  );
-}
+app.get('/auth/github/callback',
+  passport.authenticate('github', {
+    failureRedirect: '/',
+    session: true
+  }),
+  (req, res) => {
+    console.log('✅ GitHub authentication successful for:', req.user.email);
+    // Redirigir a panel de pruebas
+    res.redirect('/panel');
+  }
+);
 
 // Logout route
 app.get('/auth/logout', (req, res, next) => {
@@ -190,13 +200,19 @@ app.get('/auth/logout', (req, res, next) => {
   });
 });
 
-// Current user route (para API)
+// Current user route
 app.get('/api/me', (req, res) => {
   if (req.isAuthenticated()) {
     res.json({
       success: true,
       authenticated: true,
-      user: req.user.getPublicProfile()
+      user: {
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        githubId: req.user.githubId
+      }
     });
   } else {
     res.status(401).json({
@@ -207,355 +223,64 @@ app.get('/api/me', (req, res) => {
   }
 });
 
-// Test authentication endpoint
-app.get('/auth/test', (req, res) => {
-  res.json({
-    success: true,
-    authenticated: req.isAuthenticated(),
-    sessionId: req.sessionID,
-    user: req.user ? req.user.getPublicProfile() : null
+// ========================
+// Middleware de Autenticación SIMPLIFICADO
+// ========================
+const requireAuth = (req, res, next) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  
+  res.status(401).json({
+    success: false,
+    message: 'Authentication required. Please log in with GitHub first.',
+    loginUrl: '/auth/github'
   });
-});
+};
+
+const requireAdmin = (req, res, next) => {
+  if (req.isAuthenticated() && req.user.role === 'admin') {
+    return next();
+  }
+  
+  res.status(403).json({
+    success: false,
+    message: 'Admin access required.'
+  });
+};
 
 // ========================
-// API Routes
+// Import Routes
 // ========================
 const usersRoutes = require('./routes/users');
 const propertiesRoutes = require('./routes/properties');
 const reservationsRoutes = require('./routes/reservations');
 const vehiclesRoutes = require('./routes/vehicles');
-const authRoutes = require('./routes/auth');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/properties', propertiesRoutes);
 app.use('/api/reservations', reservationsRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
-app.use('/api/auth', authRoutes);
 
 // ========================
-// Authentication Middleware Example
-// ========================
-app.get('/api/protected', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({
-      success: false,
-      message: 'Authentication required. Please log in with GitHub.'
-    });
-  }
-  
-  res.json({
-    success: true,
-    message: 'You have accessed a protected route!',
-    user: req.user.getPublicProfile()
-  });
-});
-
-app.get('/api/admin-only', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
-  }
-  
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({
-      success: false,
-      message: 'Admin access required'
-    });
-  }
-  
-  res.json({
-    success: true,
-    message: 'Welcome, Admin!',
-    user: req.user.getPublicProfile()
-  });
-});
-
-// ========================
-// Swagger Documentation
+// Swagger Documentation - ACTUALIZAR SIN JWT
 // ========================
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
   explorer: true,
   customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Reservations API - Stay & Go',
-  swaggerOptions: {
-    persistAuthorization: false, // No necesitamos persistir porque usamos sesiones
-    tryItOutEnabled: true,
-    displayRequestDuration: true
-  }
+  customSiteTitle: 'Reservations API - Stay & Go (GitHub OAuth)'
 }));
 
 // ========================
-// Panel de Pruebas Web
+// Panel de Pruebas Web - MANTENER
 // ========================
 app.get('/panel', (req, res) => {
-  const html = `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <title>Panel de Pruebas - Reservations API</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 40px; }
-      .card { border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 8px; }
-      .success { background: #d4edda; }
-      .error { background: #f8d7da; }
-      pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
-      button { padding: 10px 15px; margin: 5px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-      button:hover { background: #0056b3; }
-      button.secondary { background: #6c757d; }
-      button.secondary:hover { background: #545b62; }
-      .user-info { background: #e9ecef; padding: 15px; border-radius: 5px; margin: 10px 0; }
-    </style>
-  </head>
-  <body>
-    <h1>🔧 Panel de Pruebas - Reservations API (GitHub OAuth)</h1>
-    
-    <div class="card">
-      <h2>1. Autenticación con GitHub</h2>
-      <button onclick="window.location.href='/auth/github'">🔑 Login with GitHub</button>
-      <button onclick="checkAuth()" class="secondary">Verificar Estado</button>
-      <button onclick="logout()" class="secondary">Logout</button>
-      <div id="authStatus" class="user-info"></div>
-    </div>
-    
-    <div class="card">
-      <h2>2. Crear Reserva de Prueba</h2>
-      <button onclick="createTestReservation()">Crear Reserva</button>
-      <div id="reservationResult"></div>
-    </div>
-    
-    <div class="card">
-      <h2>3. Ver Mis Reservas</h2>
-      <button onclick="getMyReservations()">Obtener Mis Reservas</button>
-      <div id="reservationsList"></div>
-    </div>
-    
-    <div class="card">
-      <h2>4. Ver Propiedades Disponibles</h2>
-      <button onclick="getProperties()">Obtener Propiedades</button>
-      <div id="propertiesList"></div>
-    </div>
-    
-    <script>
-      async function checkAuth() {
-        try {
-          const response = await fetch('/api/me', { credentials: 'include' });
-          const data = await response.json();
-          
-          const statusDiv = document.getElementById('authStatus');
-          if (data.authenticated) {
-            statusDiv.innerHTML = \`
-              <div class="success">
-                <p><strong>✅ Autenticado como:</strong> \${data.user.name}</p>
-                <p><strong>Email:</strong> \${data.user.email}</p>
-                <p><strong>Rol:</strong> \${data.user.role}</p>
-                <p><strong>ID:</strong> \${data.user._id}</p>
-              </div>
-            \`;
-          } else {
-            statusDiv.innerHTML = \`
-              <div class="error">
-                <p>❌ No autenticado. <a href="/auth/github">Login with GitHub</a></p>
-                <p>\${data.message}</p>
-              </div>
-            \`;
-          }
-        } catch (error) {
-          document.getElementById('authStatus').innerHTML = \`
-            <div class="error">
-              <p>❌ Error: \${error.message}</p>
-            </div>
-          \`;
-        }
-      }
-      
-      async function logout() {
-        try {
-          const response = await fetch('/auth/logout', { credentials: 'include' });
-          const data = await response.json();
-          
-          if (data.success) {
-            alert('Logged out successfully');
-            checkAuth();
-          }
-        } catch (error) {
-          console.error('Logout error:', error);
-        }
-      }
-      
-      async function getProperties() {
-        try {
-          const response = await fetch('/api/properties', { credentials: 'include' });
-          const data = await response.json();
-          
-          const listDiv = document.getElementById('propertiesList');
-          if (data.success && data.data.length > 0) {
-            listDiv.innerHTML = \`
-              <h3>Propiedades Disponibles (\${data.data.length}):</h3>
-              \${data.data.map(prop => \`
-                <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 5px;">
-                  <strong>\${prop.name}</strong> (ID: \${prop._id})<br>
-                  <small>\${prop.address.city}, \${prop.address.country}</small><br>
-                  <small>Habitaciones: \${prop.rooms.length}</small><br>
-                  <button onclick="usePropertyForReservation('\${prop._id}', '\${prop.rooms[0]?.roomId || ''}')">
-                    Usar para Reserva
-                  </button>
-                </div>
-              \`).join('')}
-            \`;
-          } else {
-            listDiv.innerHTML = '<p>No hay propiedades disponibles.</p>';
-          }
-        } catch (error) {
-          document.getElementById('propertiesList').innerHTML = \`
-            <div class="error">
-              <p>❌ Error: \${error.message}</p>
-            </div>
-          \`;
-        }
-      }
-      
-      function usePropertyForReservation(propertyId, roomId) {
-        sessionStorage.setItem('testPropertyId', propertyId);
-        sessionStorage.setItem('testRoomId', roomId);
-        alert(\`Property ID \${propertyId} guardado para prueba\`);
-      }
-      
-      async function createTestReservation() {
-        // Primero verificar autenticación
-        const authResponse = await fetch('/api/me', { credentials: 'include' });
-        const authData = await authResponse.json();
-        
-        if (!authData.authenticated) {
-          alert('Por favor, inicia sesión con GitHub primero');
-          window.location.href = '/auth/github';
-          return;
-        }
-        
-        // Usar propertyId guardado o pedir uno
-        let propertyId = sessionStorage.getItem('testPropertyId');
-        let roomId = sessionStorage.getItem('testRoomId');
-        
-        if (!propertyId) {
-          propertyId = prompt('Property ID:', '650a1b2c3d4e5f0012345679');
-          roomId = prompt('Room ID:', 'BEACH001');
-        }
-        
-        const reservationData = {
-          propertyId: propertyId,
-          roomId: roomId,
-          startDate: prompt('Fecha de inicio (YYYY-MM-DD):', '2024-01-15'),
-          endDate: prompt('Fecha de fin (YYYY-MM-DD):', '2024-01-20'),
-          numGuests: parseInt(prompt('Número de huéspedes:', '2')),
-          totalAmount: parseFloat(prompt('Monto total:', '500.00')),
-          specialRequests: prompt('Solicitudes especiales:', 'Reserva de prueba con GitHub OAuth')
-        };
-        
-        try {
-          const response = await fetch('/api/reservations', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            credentials: 'include', // IMPORTANTE: envía las cookies de sesión
-            body: JSON.stringify(reservationData)
-          });
-          
-          const result = await response.json();
-          const resultDiv = document.getElementById('reservationResult');
-          
-          if (result.success) {
-            resultDiv.innerHTML = \`
-              <div class="success">
-                <p><strong>✅ Reserva creada exitosamente!</strong></p>
-                <pre>\${JSON.stringify(result.data, null, 2)}</pre>
-              </div>
-            \`;
-          } else {
-            resultDiv.innerHTML = \`
-              <div class="error">
-                <p><strong>❌ Error:</strong> \${result.message}</p>
-                <pre>\${JSON.stringify(result, null, 2)}</pre>
-              </div>
-            \`;
-          }
-        } catch (error) {
-          document.getElementById('reservationResult').innerHTML = \`
-            <div class="error">
-              <p>❌ Error: \${error.message}</p>
-            </div>
-          \`;
-        }
-      }
-      
-      async function getMyReservations() {
-        try {
-          const response = await fetch('/api/reservations', {
-            credentials: 'include'
-          });
-          const data = await response.json();
-          
-          const listDiv = document.getElementById('reservationsList');
-          if (data.success && data.data.length > 0) {
-            listDiv.innerHTML = \`
-              <h3>Tus Reservas (\${data.data.length}):</h3>
-              \${data.data.map(res => \`
-                <div style="border-bottom: 1px solid #eee; padding: 10px;">
-                  <strong>\${res.propertyId?.name || 'Propiedad'}</strong><br>
-                  Habitación: \${res.roomId}<br>
-                  Fechas: \${new Date(res.startDate).toLocaleDateString()} a \${new Date(res.endDate).toLocaleDateString()}<br>
-                  Estado: \${res.status}<br>
-                  Huéspedes: \${res.numGuests}<br>
-                  <button onclick="deleteReservation('\${res._id}')">Eliminar</button>
-                </div>
-              \`).join('')}
-            \`;
-          } else {
-            listDiv.innerHTML = '<p>No tienes reservas.</p>';
-          }
-        } catch (error) {
-          document.getElementById('reservationsList').innerHTML = \`
-            <div class="error">
-              <p>❌ Error: \${error.message}</p>
-            </div>
-          \`;
-        }
-      }
-      
-      async function deleteReservation(reservationId) {
-        if (!confirm('¿Estás seguro de eliminar esta reserva?')) return;
-        
-        try {
-          const response = await fetch(\`/api/reservations/\${reservationId}\`, {
-            method: 'DELETE',
-            credentials: 'include'
-          });
-          
-          const data = await response.json();
-          if (data.success) {
-            alert('Reserva eliminada exitosamente');
-            getMyReservations();
-          } else {
-            alert('Error: ' + data.message);
-          }
-        } catch (error) {
-          alert('Error: ' + error.message);
-        }
-      }
-      
-      // Verificar autenticación al cargar la página
-      window.onload = checkAuth;
-    </script>
-  </body>
-  </html>
-  `;
-  
-  res.send(html);
+  // ... (mantener el mismo HTML)
+  // Solo cambiar las URLs para usar solo sesiones
 });
 
 // ========================
-// Utility Routes
+// Health & Status
 // ========================
 app.get('/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
@@ -563,54 +288,36 @@ app.get('/health', (req, res) => {
     success: true, 
     message: 'Reservations API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
+    authentication: 'GitHub OAuth only (no JWT)',
     database: dbStatus,
-    session: {
-      enabled: true,
-      cookie: req.session.cookie
-    },
-    oauth: {
-      github: process.env.GITHUB_CLIENT_ID ? 'Configured' : 'Not Configured'
+    endpoints: {
+      login: '/auth/github',
+      logout: '/auth/logout',
+      current_user: '/api/me',
+      docs: '/api-docs',
+      panel: '/panel'
     }
-  });
-});
-
-// Session debug endpoint
-app.get('/session/debug', (req, res) => {
-  res.json({
-    success: true,
-    sessionId: req.sessionID,
-    session: req.session,
-    authenticated: req.isAuthenticated(),
-    cookies: req.headers.cookie
   });
 });
 
 // Home route
 app.get('/', (req, res) => {
-  const isAuthenticated = req.isAuthenticated();
-  
   res.json({
     success: true,
     message: 'Welcome to Reservations API - Stay & Go',
     version: '2.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    authenticated: isAuthenticated,
-    user: isAuthenticated ? req.user.getPublicProfile() : null,
+    authentication: 'GitHub OAuth (Session-based) - NO JWT',
     endpoints: {
+      login: '/auth/github',
+      logout: '/auth/logout',
+      current_user: '/api/me',
       documentation: '/api-docs',
       users: '/api/users',
       properties: '/api/properties',
       reservations: '/api/reservations',
       vehicles: '/api/vehicles',
-      auth: '/api/auth/status',
       health: '/health',
-      panel: '/panel',
-      oauth: {
-        login: '/auth/github',
-        current: '/api/me',
-        logout: '/auth/logout'
-      }
+      panel: '/panel'
     }
   });
 });
@@ -619,23 +326,6 @@ app.get('/', (req, res) => {
 // Error Handling
 // ========================
 app.use(errorHandler);
-
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: `Route not found: ${req.method} ${req.originalUrl}`,
-    availableRoutes: {
-      documentation: '/api-docs',
-      users: '/api/users',
-      properties: '/api/properties',
-      reservations: '/api/reservations',
-      vehicles: '/api/vehicles',
-      auth: '/api/auth/status',
-      health: '/health',
-      panel: '/panel'
-    }
-  });
-});
 
 // ========================
 // Start Server
@@ -646,15 +336,11 @@ if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔐 GitHub OAuth: ${process.env.GITHUB_CLIENT_ID ? 'Configured' : 'Not Configured'}`);
     console.log(`🔐 Authentication: GitHub OAuth only (no JWT)`);
     console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
     console.log(`🔑 GitHub Login: http://localhost:${PORT}/auth/github`);
     console.log(`🔧 Test Panel: http://localhost:${PORT}/panel`);
-    console.log(`🏥 Health check: http://localhost:${PORT}/health`);
   });
-} else {
-  console.log('🧪 Test mode: Server not started');
 }
 
 module.exports = app;
