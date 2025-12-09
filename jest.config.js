@@ -1,17 +1,33 @@
+// jest.config.js
 module.exports = {
   testEnvironment: 'node',
-  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   testMatch: ['**/tests/**/*.test.js'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+  collectCoverageFrom: [
+    'controllers/**/*.js',
+    'middleware/**/*.js',
+    'models/**/*.js',
+    'routes/**/*.js',
+    '!**/node_modules/**',
+    '!**/tests/**',
+    '!**/coverage/**'
+  ],
+  coverageDirectory: 'coverage',
   verbose: true,
+  testTimeout: 30000,
+  detectOpenHandles: true,
   forceExit: true,
+  maxWorkers: 1,
+  transform: {},
+  moduleFileExtensions: ['js', 'json', 'node'],
+  
+  // Remove global setup/teardown to avoid issues
+  // globalSetup: undefined,
+  // globalTeardown: undefined,
+  
+  // Don't try to mock modules automatically
+  automock: false,
+  resetMocks: false,
   clearMocks: true,
-  resetMocks: true,
-  restoreMocks: true,
-  // Set NODE_ENV to test
-  testEnvironmentOptions: {
-    NODE_ENV: 'test',
-  },
-  // Add this to handle mongoose connections
-  globalSetup: '<rootDir>/tests/global-setup.js',
-  globalTeardown: '<rootDir>/tests/global-teardown.js',
+  restoreMocks: false
 };

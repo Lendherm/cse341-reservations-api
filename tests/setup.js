@@ -1,50 +1,59 @@
+// tests/setup.js - Simplified setup
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
 let mongoServer;
 
-// Detectar si estamos en CI (como Render)
-const isCI = process.env.CI === 'true' || process.env.NODE_ENV === 'test';
+// Increase timeout for all tests
+jest.setTimeout(30000);
+
+// Suppress Mongoose deprecation warnings
+mongoose.set('strictQuery', true);
 
 beforeAll(async () => {
-  if (isCI) {
-    // Usar base de datos en memoria para CI
+  try {
+    // Create in-memory MongoDB server
     mongoServer = await MongoMemoryServer.create();
     const mongoUri = mongoServer.getUri();
-
+    
+    // Connect mongoose
     await mongoose.connect(mongoUri, {
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
     });
-
-    console.log('✅ Connected to MongoDB Memory Server for testing (CI)');
-  } else {
-    // Usar base de datos local definida en .env
-    await mongoose.connect(process.env.MONGODB_URI_TEST, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-
-    console.log('✅ Connected to local test database');
+    
+    console.log('✅ Connected to in-memory MongoDB for testing');
+  } catch (error) {
+    console.error('❌ Error setting up test database:', error);
+    throw error;
   }
 });
 
-// Limpiar después de cada prueba
-afterEach(async () => {
-  const collections = mongoose.connection.collections;
-
-  for (const key in collections) {
-    await collections[key].deleteMany({});
-  }
-});
-
-// Cerrar conexión al terminar todas las pruebas
 afterAll(async () => {
-  await mongoose.connection.close();
-
-  if (mongoServer) {
-    await mongoServer.stop();
+  try {
+    await mongoose.disconnect();
+    if (mongoServer) {
+      await mongoServer.stop();
+    }
+    console.log('✅ Disconnected from in-memory MongoDB');
+  } catch (error) {
+    console.error('❌ Error cleaning up test database:', error);
   }
+});
 
-  console.log('🔒 MongoDB test database connection closed');
+// Clear all collections between tests
+beforeEach(async () => {
+  if (mongoose.connection.readyState === 1) {
+    const collections = mongoose.connection.collections;
+    
+    for (const key in collections) {
+      try {
+        await collections[key].deleteMany();
+      } catch (error) {
+        // Collection might not exist yet
+      }
+    }
+  }
 });

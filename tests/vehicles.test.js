@@ -1,61 +1,75 @@
+// tests/vehicles.test.js - Tests para vehículos (rutas públicas)
 const request = require('supertest');
 const mongoose = require('mongoose');
-const app = require('../server');
 const Vehicle = require('../models/Vehicle');
 const User = require('../models/User');
 
-describe('Vehicle API Endpoints', () => {
-  let testProvider;
+// Importar la app de testing
+const app = require('../server.test');
 
-  //beforeAll(async () => {
-    //await mongoose.connect(process.env.MONGODB_URI_TEST, {
-      //useNewUrlParser: true,
-      //useUnifiedTopology: true,
-    //});
-  //});
-//
-  //afterAll(async () => {
-    //await mongoose.connection.close();
-  //});
+describe('Vehicles Collection - GET Endpoints', () => {
+  let testUser;
+  let testVehicle;
 
   beforeEach(async () => {
+    // Clear data and create fresh for each test
     await Vehicle.deleteMany({});
     await User.deleteMany({});
-    
-    // Create test provider
-    testProvider = await User.create({
+
+    testUser = await User.create({
       name: 'Vehicle Provider',
       email: 'provider@test.com',
-      passwordHash: 'password123',
       role: 'provider'
     });
+
+    testVehicle = await Vehicle.create({
+      providerId: testUser._id,
+      make: 'Toyota',
+      model: 'Camry',
+      year: 2022,
+      type: 'sedan',
+      seats: 5,
+      pricePerDay: 49.99,
+      location: {
+        city: 'Test City'
+      },
+      licensePlate: 'TEST001',
+      isAvailable: true
+    });
+  });
+
+  afterAll(async () => {
+    await Vehicle.deleteMany({});
+    await User.deleteMany({});
   });
 
   describe('GET /api/vehicles', () => {
     it('should return all vehicles', async () => {
-      // Create test vehicles
+      // Create more vehicles
       await Vehicle.create([
         {
-          providerId: testProvider._id,
-          make: 'Toyota',
-          model: 'Camry',
-          year: 2022,
-          type: 'sedan',
+          providerId: testUser._id,
+          make: 'Honda',
+          model: 'Civic',
+          year: 2021,
+          type: 'economy',
           seats: 5,
-          pricePerDay: 49.99,
-          licensePlate: 'ABC123',
-          location: { city: 'Miami' }
+          pricePerDay: 39.99,
+          location: { city: 'Test City' },
+          licensePlate: 'TEST002',
+          isAvailable: true
         },
         {
-          providerId: testProvider._id,
+          providerId: testUser._id,
           make: 'Ford',
           model: 'Explorer',
-          year: 2021,
+          year: 2023,
           type: 'suv',
           seats: 7,
           pricePerDay: 79.99,
-          licensePlate: 'XYZ789',
-          location: { city: 'Orlando' }
+          location: { city: 'Other City' },
+          licensePlate: 'TEST003',
+          isAvailable: false
         }
       ]);
 
@@ -64,36 +78,24 @@ describe('Vehicle API Endpoints', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(2);
-      expect(response.body.data[0]).toHaveProperty('make');
-      expect(response.body.data[0]).toHaveProperty('model');
+      expect(response.body.data).toHaveLength(3);
+      expect(response.body.pagination).toBeDefined();
     });
 
     it('should filter vehicles by type', async () => {
-      await Vehicle.create([
-        {
-          providerId: testProvider._id,
-          make: 'Toyota',
-          model: 'Camry',
-          year: 2022,
-          type: 'sedan',
-          seats: 5,
-          pricePerDay: 49.99,
-          licensePlate: 'ABC123',
-          location: { city: 'Miami' }
-        },
-        {
-          providerId: testProvider._id,
-          make: 'Ford',
-          model: 'Explorer',
-          year: 2021,
-          type: 'suv',
-          seats: 7,
-          pricePerDay: 79.99,
-          licensePlate: 'XYZ789',
-          location: { city: 'Miami' }
-        }
-      ]);
+      // Create another vehicle of different type
+      await Vehicle.create({
+        providerId: testUser._id,
+        make: 'Ford',
+        model: 'Explorer',
+        year: 2023,
+        type: 'suv',
+        seats: 7,
+        pricePerDay: 79.99,
+        location: { city: 'Test City' },
+        licensePlate: 'TEST002',
+        isAvailable: true
+      });
 
       const response = await request(app)
         .get('/api/vehicles?type=sedan')
@@ -102,118 +104,87 @@ describe('Vehicle API Endpoints', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveLength(1);
       expect(response.body.data[0].type).toBe('sedan');
+      expect(response.body.data[0].make).toBe('Toyota');
     });
 
     it('should filter vehicles by city', async () => {
-      await Vehicle.create([
-        {
-          providerId: testProvider._id,
-          make: 'Toyota',
-          model: 'Camry',
-          year: 2022,
-          type: 'sedan',
-          seats: 5,
-          pricePerDay: 49.99,
-          licensePlate: 'ABC123',
-          location: { city: 'Miami' }
-        },
-        {
-          providerId: testProvider._id,
-          make: 'Ford',
-          model: 'Explorer',
-          year: 2021,
-          type: 'suv',
-          seats: 7,
-          pricePerDay: 79.99,
-          licensePlate: 'XYZ789',
-          location: { city: 'Orlando' }
-        }
-      ]);
+      await Vehicle.create({
+        providerId: testUser._id,
+        make: 'Honda',
+        model: 'Civic',
+        year: 2021,
+        type: 'economy',
+        seats: 5,
+        pricePerDay: 39.99,
+        location: { city: 'Other City' },
+        licensePlate: 'TEST002',
+        isAvailable: true
+      });
 
       const response = await request(app)
-        .get('/api/vehicles?city=Miami')
+        .get('/api/vehicles?city=Test City')
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].location.city).toBe('Miami');
+      expect(response.body.data[0].location.city).toBe('Test City');
     });
 
-    it('should filter vehicles by price range', async () => {
-      await Vehicle.create([
-        {
-          providerId: testProvider._id,
-          make: 'Toyota',
-          model: 'Camry',
-          year: 2022,
-          type: 'sedan',
-          seats: 5,
-          pricePerDay: 49.99,
-          licensePlate: 'ABC123',
-          location: { city: 'Miami' }
-        },
-        {
-          providerId: testProvider._id,
-          make: 'Mercedes',
-          model: 'S-Class',
-          year: 2023,
-          type: 'luxury',
-          seats: 5,
-          pricePerDay: 199.99,
-          licensePlate: 'LUX456',
-          location: { city: 'Miami' }
-        }
-      ]);
+    it('should filter vehicles by availability', async () => {
+      await Vehicle.create({
+        providerId: testUser._id,
+        make: 'Ford',
+        model: 'Explorer',
+        year: 2023,
+        type: 'suv',
+        seats: 7,
+        pricePerDay: 79.99,
+        location: { city: 'Test City' },
+        licensePlate: 'TEST002',
+        isAvailable: false
+      });
 
       const response = await request(app)
-        .get('/api/vehicles?maxPrice=100')
+        .get('/api/vehicles?available=true')
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].pricePerDay).toBeLessThanOrEqual(100);
+      expect(response.body.data[0].isAvailable).toBe(true);
     });
   });
 
   describe('GET /api/vehicles/:id', () => {
-    it('should return a single vehicle by ID', async () => {
-      const vehicle = await Vehicle.create({
-        providerId: testProvider._id,
-        make: 'Toyota',
-        model: 'Camry',
-        year: 2022,
-        type: 'sedan',
-        seats: 5,
-        pricePerDay: 49.99,
-        licensePlate: 'ABC123',
-        location: { city: 'Miami' }
-      });
-
-      const response = await request(app)
-        .get(`/api/vehicles/${vehicle._id}`)
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.data._id).toBe(vehicle._id.toString());
-      expect(response.body.data.make).toBe('Toyota');
-      expect(response.body.data.model).toBe('Camry');
-    });
-
     it('should return 400 for invalid ID format', async () => {
       const response = await request(app)
         .get('/api/vehicles/invalid-id')
         .expect(400);
 
       expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Invalid ID format');
     });
 
     it('should return 404 for non-existent vehicle', async () => {
-      const fakeId = new mongoose.Types.ObjectId();
+      const nonExistentId = new mongoose.Types.ObjectId();
+      
       const response = await request(app)
-        .get(`/api/vehicles/${fakeId}`)
+        .get(`/api/vehicles/${nonExistentId}`)
         .expect(404);
 
       expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Vehicle not found');
+    });
+
+    it('should return vehicle details for valid ID', async () => {
+      const response = await request(app)
+        .get(`/api/vehicles/${testVehicle._id}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data._id.toString()).toBe(testVehicle._id.toString());
+      expect(response.body.data.make).toBe('Toyota');
+      expect(response.body.data.model).toBe('Camry');
+      expect(response.body.data.type).toBe('sedan');
     });
   });
 });

@@ -1,4 +1,8 @@
 // tests/global-teardown.js
 module.exports = async () => {
-  // Nothing to do here, but required by Jest
+  console.log('🧹 Global test teardown starting...');
+  
+  // Any global cleanup here
+  
+  console.log('✅ Global test teardown complete');
 };
