@@ -1,12 +1,24 @@
 {
   "name": "reservations-api",
   "version": "2.0.0",
-  "description": "Reservations API with GitHub OAuth",
+  "description": "Reservations API with GitHub OAuth - Fixed for Render",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "render-build": "node -e \"console.log('Build script ejecutado')\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [
+    "nodejs",
+    "express",
+    "mongodb",
+    "oauth",
+    "api",
+    "render"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "connect-mongo": "^5.1.0",
     "cors": "^2.8.5",
