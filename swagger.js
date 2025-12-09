@@ -6,7 +6,7 @@ const options = {
     info: {
       title: "Reservations API - Stay & Go",
       version: "2.0.0",
-      description: "API completa para reservas de hoteles y transporte. **IMPORTANTE**: Para usar la API, primero debes autenticarte con GitHub en [/auth/github](/auth/github). La autenticación usa sesiones (cookies).",
+      description: "Complete API for hotel and transportation reservations. **IMPORTANT**: To use protected endpoints, you must first authenticate with GitHub at [/auth/github](/auth/github). Authentication uses session cookies.",
       contact: {
         name: "API Support",
         email: "support@stayandgo.com"
@@ -19,14 +19,22 @@ const options = {
     servers: [
       {
         url: "https://cse341-reservations-api.onrender.com",
-        description: "Servidor de producción (Render)"
+        description: "Production server (Render)"
       },
       {
         url: "http://localhost:8080",
-        description: "Servidor de desarrollo local"
+        description: "Local development server"
       }
     ],
     components: {
+      securitySchemes: {
+        sessionAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "connect.sid",
+          description: "Session cookie for authenticated users. Login at /auth/github first."
+        }
+      },
       schemas: {
         User: {
           type: "object",
@@ -39,30 +47,30 @@ const options = {
             name: {
               type: "string",
               example: "John Doe",
-              description: "Nombre completo del usuario"
+              description: "User's full name"
             },
             email: {
               type: "string",
               format: "email",
               example: "john@example.com",
-              description: "Email del usuario (único)"
+              description: "User email (unique)"
             },
             githubId: {
               type: "string",
               example: "1234567",
-              description: "ID de GitHub para autenticación"
+              description: "GitHub ID for authentication"
             },
             username: {
               type: "string",
               example: "johndoe",
-              description: "Nombre de usuario de GitHub"
+              description: "GitHub username"
             },
             role: {
               type: "string",
               enum: ["user", "admin", "provider"],
               default: "user",
               example: "user",
-              description: "Rol del usuario en el sistema"
+              description: "User role in the system"
             }
           }
         },
@@ -77,17 +85,17 @@ const options = {
             ownerId: {
               type: "string",
               example: "650a1b2c3d4e5f0012345678",
-              description: "ID del propietario (usuario)"
+              description: "ID of the owner (user)"
             },
             name: {
               type: "string",
               example: "Luxury Beach Resort",
-              description: "Nombre de la propiedad"
+              description: "Property name"
             },
             description: {
               type: "string",
-              example: "Un resort de lujo con vista al mar",
-              description: "Descripción de la propiedad"
+              example: "A luxury resort with ocean view",
+              description: "Property description"
             },
             address: {
               type: "object",
@@ -141,33 +149,33 @@ const options = {
             },
             userId: {
               type: "string",
-              description: "ID del usuario que hizo la reserva"
+              description: "ID of the user who made the reservation"
             },
             propertyId: {
               type: "string",
-              description: "ID de la propiedad"
+              description: "Property ID"
             },
             roomId: {
               type: "string",
-              description: "ID de la habitación"
+              description: "Room ID"
             },
             startDate: {
               type: "string",
               format: "date",
-              description: "Fecha de inicio de la reserva"
+              description: "Reservation start date"
             },
             endDate: {
               type: "string",
               format: "date",
-              description: "Fecha de fin de la reserva"
+              description: "Reservation end date"
             },
             numGuests: {
               type: "integer",
-              description: "Número de huéspedes"
+              description: "Number of guests"
             },
             totalAmount: {
               type: "number",
-              description: "Monto total de la reserva"
+              description: "Total reservation amount"
             },
             status: {
               type: "string",
@@ -176,21 +184,62 @@ const options = {
             },
             specialRequests: {
               type: "string",
-              description: "Solicitudes especiales"
+              description: "Special requests"
             }
           }
         },
         Vehicle: {
           type: "object",
+          required: ["providerId", "make", "model", "year", "type", "seats", "pricePerDay", "licensePlate"],
           properties: {
-            _id: { type: "string" },
-            providerId: { type: "string", description: "ID del proveedor" },
-            make: { type: "string", example: "Toyota" },
-            model: { type: "string", example: "Camry" },
-            year: { type: "integer", example: 2022 },
-            type: { type: "string", example: "sedan" },
-            seats: { type: "integer", example: 5 },
-            pricePerDay: { type: "number", example: 49.99 }
+            _id: { 
+              type: "string",
+              description: "Auto-generated MongoDB ObjectId"
+            },
+            providerId: { 
+              type: "string", 
+              description: "Provider ID" 
+            },
+            make: { 
+              type: "string", 
+              example: "Toyota" 
+            },
+            model: { 
+              type: "string", 
+              example: "Camry" 
+            },
+            year: { 
+              type: "integer", 
+              example: 2022 
+            },
+            type: { 
+              type: "string", 
+              enum: ["sedan", "suv", "van", "luxury", "economy"],
+              example: "sedan" 
+            },
+            seats: { 
+              type: "integer", 
+              example: 5 
+            },
+            pricePerDay: { 
+              type: "number", 
+              example: 49.99 
+            },
+            licensePlate: {
+              type: "string",
+              example: "ABC123"
+            },
+            location: {
+              type: "object",
+              properties: {
+                city: { type: "string", example: "Miami" }
+              }
+            },
+            isAvailable: {
+              type: "boolean",
+              example: true,
+              default: true
+            }
           }
         },
         Error: {
@@ -202,12 +251,12 @@ const options = {
             },
             message: {
               type: "string",
-              example: "Descripción del error"
+              example: "Error description"
             },
             loginUrl: {
               type: "string",
               example: "/auth/github",
-              description: "URL para iniciar sesión (para errores de autenticación)"
+              description: "URL to login (for authentication errors)"
             }
           }
         },
@@ -220,18 +269,18 @@ const options = {
             },
             message: {
               type: "string",
-              example: "Operación exitosa"
+              example: "Operation successful"
             },
             data: {
               type: "object",
-              description: "Datos de respuesta"
+              description: "Response data"
             }
           }
         }
       },
       responses: {
         Unauthorized: {
-          description: "Autenticación requerida - Primero debes iniciar sesión en /auth/github",
+          description: "Authentication required - First log in at /auth/github",
           content: {
             "application/json": {
               schema: {
@@ -239,14 +288,14 @@ const options = {
               },
               example: {
                 success: false,
-                message: "Por favor inicia sesión con GitHub para acceder a este recurso",
+                message: "Please log in with GitHub to access this resource",
                 loginUrl: "/auth/github"
               }
             }
           }
         },
         Forbidden: {
-          description: "Permisos insuficientes",
+          description: "Insufficient permissions",
           content: {
             "application/json": {
               schema: {
@@ -254,13 +303,13 @@ const options = {
               },
               example: {
                 success: false,
-                message: "Acceso denegado. Se requieren permisos de administrador."
+                message: "Access denied. Admin permissions required."
               }
             }
           }
         },
         ValidationError: {
-          description: "Error de validación",
+          description: "Validation error",
           content: {
             "application/json": {
               schema: {
@@ -268,8 +317,22 @@ const options = {
               },
               example: {
                 success: false,
-                message: "Error de validación",
-                errors: ["El campo 'nombre' es requerido"]
+                message: "Validation error",
+                errors: ["The 'name' field is required"]
+              }
+            }
+          }
+        },
+        NotFound: {
+          description: "Resource not found",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/Error"
+              },
+              example: {
+                success: false,
+                message: "Resource not found"
               }
             }
           }
@@ -278,28 +341,28 @@ const options = {
     },
     tags: [
       {
-        name: "Autenticación",
-        description: "Endpoints de autenticación con GitHub OAuth"
+        name: "Authentication",
+        description: "GitHub OAuth authentication endpoints"
       },
       {
-        name: "Usuarios",
-        description: "Gestión de usuarios (Administrador)"
+        name: "Users",
+        description: "User management (Admin)"
       },
       {
-        name: "Propiedades",
-        description: "Gestión de propiedades hoteleras"
+        name: "Properties",
+        description: "Hotel properties management"
       },
       {
-        name: "Reservas",
-        description: "Gestión de reservas (Requiere autenticación)"
+        name: "Reservations",
+        description: "Reservations management (Requires authentication)"
       },
       {
-        name: "Vehículos",
-        description: "Gestión de vehículos para transporte"
+        name: "Vehicles",
+        description: "Vehicles management for transportation"
       }
     ],
     externalDocs: {
-      description: "Panel de pruebas interactivo",
+      description: "Interactive test panel",
       url: "/panel"
     }
   },

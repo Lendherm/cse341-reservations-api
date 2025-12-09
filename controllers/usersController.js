@@ -15,7 +15,6 @@ const getAllUsers = async (req, res, next) => {
     }
 
     const users = await User.find(filter)
-      .select('-passwordHash')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -41,8 +40,7 @@ const getAllUsers = async (req, res, next) => {
 // GET single user by ID
 const getUserById = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id)
-      .select('-passwordHash');
+    const user = await User.findById(req.params.id);
 
     if (!user) {
       return res.status(404).json({
@@ -60,10 +58,10 @@ const getUserById = async (req, res, next) => {
   }
 };
 
-// POST create new user
+// POST create new user (Admin only - for manual user creation)
 const createUser = async (req, res, next) => {
   try {
-    const { name, email, passwordHash, phone, role } = req.body;
+    const { name, email, role } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -77,9 +75,7 @@ const createUser = async (req, res, next) => {
     const user = new User({
       name: name.trim(),
       email: email.toLowerCase().trim(),
-      passwordHash,
-      phone: phone ? phone.trim() : undefined,
-      role
+      role: role || 'user'
     });
 
     const savedUser = await user.save();
@@ -97,20 +93,11 @@ const createUser = async (req, res, next) => {
 // PUT update user
 const updateUser = async (req, res, next) => {
   try {
-    const { name, email, phone, role } = req.body;
-
-    // Prevent password change here
-    if (req.body.passwordHash) {
-      return res.status(400).json({
-        success: false,
-        message: 'Use dedicated password update endpoint for password changes'
-      });
-    }
+    const { name, email, role } = req.body;
 
     const updateData = {
       ...(name && { name: name.trim() }),
       ...(email && { email: email.toLowerCase().trim() }),
-      ...(phone && { phone: phone.trim() }),
       ...(role && { role })
     };
 
@@ -119,10 +106,10 @@ const updateUser = async (req, res, next) => {
       updateData,
       {
         new: true,
-        runValidators: false, // ⬅️ IMPORTANT FIX
+        runValidators: false,
         context: 'query'
       }
-    ).select('-passwordHash');
+    );
 
     if (!user) {
       return res.status(404).json({

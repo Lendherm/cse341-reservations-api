@@ -1,6 +1,6 @@
-// Authentication middleware
+// Authentication middleware for session-based authentication
 
-const isAuthenticated = (req, res, next) => {
+const requireAuth = (req, res, next) => {
   if (req.isAuthenticated()) {
     return next();
   }
@@ -10,7 +10,7 @@ const isAuthenticated = (req, res, next) => {
   });
 };
 
-const isAdmin = (req, res, next) => {
+const requireAdmin = (req, res, next) => {
   if (req.isAuthenticated() && req.user.role === 'admin') {
     return next();
   }
@@ -20,7 +20,7 @@ const isAdmin = (req, res, next) => {
   });
 };
 
-const isProviderOrAdmin = (req, res, next) => {
+const requireProviderOrAdmin = (req, res, next) => {
   if (req.isAuthenticated() && (req.user.role === 'provider' || req.user.role === 'admin')) {
     return next();
   }
@@ -47,41 +47,9 @@ const isOwnerOrAdmin = (req, res, next) => {
   });
 };
 
-// Middleware to check API key for external access
-const checkApiKey = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'] || req.query.apiKey;
-  
-  if (!apiKey) {
-    return res.status(401).json({
-      success: false,
-      message: 'API key required.'
-    });
-  }
-  
-  if (apiKey !== process.env.API_KEY) {
-    return res.status(403).json({
-      success: false,
-      message: 'Invalid API key.'
-    });
-  }
-  
-  next();
-};
-
-// Combine authentication methods
-const ensureAuthenticated = isAuthenticated;
-const ensureAdmin = isAdmin;
-const ensureProviderOrAdmin = isProviderOrAdmin;
-const ensureOwnerOrAdmin = isOwnerOrAdmin;
-
 module.exports = {
-  isAuthenticated,
-  isAdmin,
-  isProviderOrAdmin,
-  isOwnerOrAdmin,
-  checkApiKey,
-  ensureAuthenticated,
-  ensureAdmin,
-  ensureProviderOrAdmin,
-  ensureOwnerOrAdmin
+  requireAuth,
+  requireAdmin,
+  requireProviderOrAdmin,
+  isOwnerOrAdmin
 };

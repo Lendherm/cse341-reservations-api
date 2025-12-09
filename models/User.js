@@ -35,11 +35,11 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Índices para mejor rendimiento
+// Indexes for better performance
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 
-// Método para obtener perfil público
+// Method to get public profile
 userSchema.methods.getPublicProfile = function() {
   return {
     _id: this._id,
@@ -53,32 +53,32 @@ userSchema.methods.getPublicProfile = function() {
   };
 };
 
-// Método para verificar si es admin
+// Method to check if user is admin
 userSchema.methods.isAdmin = function() {
   return this.role === 'admin';
 };
 
-// Método para verificar si es provider
+// Method to check if user is provider
 userSchema.methods.isProvider = function() {
   return this.role === 'provider';
 };
 
-// Static method para buscar o crear usuario desde GitHub
+// Static method to find or create user from GitHub
 userSchema.statics.findOrCreateFromGitHub = async function(profile) {
   const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
   
-  // Primero buscar por githubId
+  // First search by githubId
   let user = await this.findOne({ githubId: profile.id });
   
   if (user) {
     return user;
   }
   
-  // Si no, buscar por email
+  // If not, search by email
   if (email) {
     user = await this.findOne({ email: email.toLowerCase() });
     if (user) {
-      // Actualizar con githubId
+      // Update with githubId
       user.githubId = profile.id;
       user.username = profile.username;
       await user.save();
@@ -86,7 +86,7 @@ userSchema.statics.findOrCreateFromGitHub = async function(profile) {
     }
   }
   
-  // Crear nuevo usuario
+  // Create new user
   user = new this({
     githubId: profile.id,
     name: profile.displayName || profile.username,

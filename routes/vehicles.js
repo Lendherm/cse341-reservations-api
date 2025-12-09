@@ -9,97 +9,61 @@ const {
 } = require('../controllers/vehiclesController');
 const { validateVehicleCreate, validateVehicleUpdate, validateObjectId } = require('../middleware/validation');
 
-// Middleware de autenticación
-const requireAuth = (req, res, next) => {
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  
-  return res.status(401).json({
-    success: false,
-    message: 'Authentication required. Please log in with GitHub first.',
-    loginUrl: '/auth/github'
-  });
-};
-
-// Middleware de autorización para vehículos
-const authorizeVehicle = (req, res, next) => {
-  // Si es admin, tiene acceso completo
-  if (req.user.role === 'admin') {
-    return next();
-  }
-  
-  // Para POST: solo admin o provider pueden crear vehículos
-  if (req.method === 'POST') {
-    if (req.user.role !== 'provider') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only administrators or providers can create vehicles'
-      });
-    }
-    
-    // Providers solo pueden crear vehículos para sí mismos
-    if (req.body.providerId && req.body.providerId !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only create vehicles for your own account'
-      });
-    }
-  }
-  
-  next();
-};
-
 /**
  * @swagger
  * tags:
- *   name: Vehículos
- *   description: Gestión de vehículos para transporte
+ *   name: Vehicles
+ *   description: Vehicle management for transportation
  */
 
 /**
  * @swagger
  * /api/vehicles:
  *   get:
- *     summary: Obtener todos los vehículos
- *     tags: [Vehículos]
+ *     summary: Get all vehicles
+ *     tags: [Vehicles]
  *     parameters:
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
  *           default: 1
- *         description: Número de página
+ *         description: Page number
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           default: 10
- *         description: Número de resultados por página
+ *         description: Results per page
  *       - in: query
  *         name: type
  *         schema:
  *           type: string
  *           enum: [sedan, suv, van, luxury, economy]
- *         description: Filtrar por tipo de vehículo
+ *         description: Filter by vehicle type
  *       - in: query
  *         name: city
  *         schema:
  *           type: string
- *         description: Filtrar por ciudad
+ *         description: Filter by city
  *       - in: query
  *         name: minSeats
  *         schema:
  *           type: integer
- *         description: Número mínimo de asientos
+ *         description: Minimum number of seats
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *         description: Maximum price per day
  *       - in: query
  *         name: available
  *         schema:
  *           type: boolean
- *         description: Filtrar por disponibilidad
+ *         description: Filter by availability
  *     responses:
  *       200:
- *         description: Lista de vehículos
+ *         description: List of vehicles
  *         content:
  *           application/json:
  *             schema:
@@ -107,6 +71,7 @@ const authorizeVehicle = (req, res, next) => {
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 data:
  *                   type: array
  *                   items:
@@ -118,8 +83,8 @@ router.get('/', getAllVehicles);
  * @swagger
  * /api/vehicles/{id}:
  *   get:
- *     summary: Obtener un vehículo por ID
- *     tags: [Vehículos]
+ *     summary: Get a vehicle by ID
+ *     tags: [Vehicles]
  *     parameters:
  *       - in: path
  *         name: id
@@ -127,12 +92,22 @@ router.get('/', getAllVehicles);
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: ID de MongoDB del vehículo
+ *         description: MongoDB ObjectId of the vehicle
  *     responses:
  *       200:
- *         description: Detalles del vehículo
+ *         description: Vehicle details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Vehicle'
  *       404:
- *         description: Vehículo no encontrado
+ *         $ref: '#/components/responses/NotFound'
  */
 router.get('/:id', validateObjectId, getVehicleById);
 
@@ -140,9 +115,11 @@ router.get('/:id', validateObjectId, getVehicleById);
  * @swagger
  * /api/vehicles:
  *   post:
- *     summary: Crear un nuevo vehículo
- *     tags: [Vehículos]
- *     description: Crear un nuevo vehículo. Requiere autenticación y rol de admin o provider.
+ *     summary: Create a new vehicle
+ *     tags: [Vehicles]
+ *     description: Create a new vehicle. Requires authentication and admin or provider role.
+ *     security:
+ *       - sessionAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -171,24 +148,39 @@ router.get('/:id', validateObjectId, getVehicleById);
  *               year:
  *                 type: integer
  *                 example: 2022
+ *                 minimum: 2000
  *               type:
  *                 type: string
+ *                 enum: [sedan, suv, van, luxury, economy]
  *                 example: "sedan"
  *               seats:
  *                 type: integer
  *                 example: 5
+ *                 minimum: 2
+ *                 maximum: 15
  *               pricePerDay:
  *                 type: number
  *                 example: 49.99
+ *                 minimum: 0
  *               licensePlate:
  *                 type: string
  *                 example: "ABC123"
- *               city:
- *                 type: string
- *                 example: "Miami"
+ *               location:
+ *                 type: object
+ *                 properties:
+ *                   city:
+ *                     type: string
+ *                     example: "Miami"
+ *               isAvailable:
+ *                 type: boolean
+ *                 example: true
  *     responses:
  *       201:
- *         description: Vehículo creado exitosamente
+ *         description: Vehicle created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
@@ -196,14 +188,16 @@ router.get('/:id', validateObjectId, getVehicleById);
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  */
-router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVehicle);
+router.post('/', validateVehicleCreate, createVehicle);
 
 /**
  * @swagger
  * /api/vehicles/{id}:
  *   put:
- *     summary: Actualizar un vehículo
- *     tags: [Vehículos]
+ *     summary: Update a vehicle
+ *     tags: [Vehicles]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -211,7 +205,7 @@ router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVeh
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: ID de MongoDB del vehículo
+ *         description: MongoDB ObjectId of the vehicle
  *     requestBody:
  *       required: true
  *       content:
@@ -225,13 +219,24 @@ router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVeh
  *                 type: string
  *               year:
  *                 type: integer
+ *                 minimum: 2000
  *               pricePerDay:
  *                 type: number
+ *                 minimum: 0
  *               isAvailable:
  *                 type: boolean
+ *               location:
+ *                 type: object
+ *                 properties:
+ *                   city:
+ *                     type: string
  *     responses:
  *       200:
- *         description: Vehículo actualizado exitosamente
+ *         description: Vehicle updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
@@ -239,16 +244,18 @@ router.post('/', requireAuth, authorizeVehicle, validateVehicleCreate, createVeh
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  *       404:
- *         description: Vehículo no encontrado
+ *         $ref: '#/components/responses/NotFound'
  */
-router.put('/:id', requireAuth, validateObjectId, validateVehicleUpdate, updateVehicle);
+router.put('/:id', validateObjectId, validateVehicleUpdate, updateVehicle);
 
 /**
  * @swagger
  * /api/vehicles/{id}:
  *   delete:
- *     summary: Eliminar un vehículo
- *     tags: [Vehículos]
+ *     summary: Delete a vehicle
+ *     tags: [Vehicles]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -256,17 +263,21 @@ router.put('/:id', requireAuth, validateObjectId, validateVehicleUpdate, updateV
  *         schema:
  *           type: string
  *           pattern: '^[0-9a-fA-F]{24}$'
- *         description: ID de MongoDB del vehículo
+ *         description: MongoDB ObjectId of the vehicle
  *     responses:
  *       200:
- *         description: Vehículo eliminado exitosamente
+ *         description: Vehicle deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  *       404:
- *         description: Vehículo no encontrado
+ *         $ref: '#/components/responses/NotFound'
  */
-router.delete('/:id', requireAuth, validateObjectId, deleteVehicle);
+router.delete('/:id', validateObjectId, deleteVehicle);
 
 module.exports = router;

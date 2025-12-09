@@ -7,27 +7,30 @@ const {
   updateUser,
   deleteUser
 } = require('../controllers/usersController');
-
 const { 
   validateUser, 
   validateUserUpdate,
   validateObjectId 
 } = require('../middleware/validation');
 
+// Import authentication middleware
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 /**
  * @swagger
  * tags:
  *   name: Users
- *   description: User management endpoints
+ *   description: User management endpoints (Admin only)
  */
 
 /**
  * @swagger
  * /api/users:
  *   get:
- *     summary: Get all users with pagination
+ *     summary: Get all users with pagination (Admin only)
  *     tags: [Users]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -53,41 +56,21 @@ const {
  *     responses:
  *       200:
  *         description: List of users retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 count:
- *                   type: integer
- *                   description: Number of users in current page
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     page:
- *                       type: integer
- *                     pages:
- *                       type: integer
- *                     total:
- *                       type: integer
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/User'
- *       500:
- *         description: Server error
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
-router.get('/', getAllUsers);
+router.get('/', requireAuth, requireAdmin, getAllUsers);
 
 /**
  * @swagger
  * /api/users/{id}:
  *   get:
- *     summary: Get user by ID
+ *     summary: Get user by ID (Admin only)
  *     tags: [Users]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -99,42 +82,21 @@ router.get('/', getAllUsers);
  *     responses:
  *       200:
  *         description: User details retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   $ref: '#/components/schemas/User'
- *       400:
- *         description: Invalid ID format
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Invalid ID format
- *       404:
- *         description: User not found
- *       500:
- *         description: Server error
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
-router.get('/:id', validateObjectId, getUserById);
+router.get('/:id', requireAuth, requireAdmin, validateObjectId, getUserById);
 
 /**
  * @swagger
  * /api/users:
  *   post:
- *     summary: Create a new user
+ *     summary: Create a new user (Admin only)
  *     tags: [Users]
+ *     security:
+ *       - sessionAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -144,7 +106,6 @@ router.get('/:id', validateObjectId, getUserById);
  *             required:
  *               - name
  *               - email
- *               - passwordHash
  *             properties:
  *               name:
  *                 type: string
@@ -153,12 +114,6 @@ router.get('/:id', validateObjectId, getUserById);
  *                 type: string
  *                 format: email
  *                 example: jane@example.com
- *               passwordHash:
- *                 type: string
- *                 example: hashedpassword123
- *               phone:
- *                 type: string
- *                 example: "+1987654321"
  *               role:
  *                 type: string
  *                 enum: [user, admin, provider]
@@ -166,34 +121,23 @@ router.get('/:id', validateObjectId, getUserById);
  *     responses:
  *       201:
  *         description: User created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: User created successfully
- *                 data:
- *                   $ref: '#/components/schemas/User'
  *       400:
- *         description: Validation error
- *       409:
- *         description: User with email already exists
- *       500:
- *         description: Server error
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
-router.post('/', validateUser, createUser);
+router.post('/', requireAuth, requireAdmin, validateUser, createUser);
 
 /**
  * @swagger
  * /api/users/{id}:
  *   put:
- *     summary: Update user
+ *     summary: Update user (Admin only)
  *     tags: [Users]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -216,9 +160,6 @@ router.post('/', validateUser, createUser);
  *                 type: string
  *                 format: email
  *                 example: jane.updated@example.com
- *               phone:
- *                 type: string
- *                 example: "+1987654321"
  *               role:
  *                 type: string
  *                 enum: [user, admin, provider]
@@ -226,36 +167,21 @@ router.post('/', validateUser, createUser);
  *     responses:
  *       200:
  *         description: User updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: User updated successfully
- *                 data:
- *                   $ref: '#/components/schemas/User'
- *       400:
- *         description: Validation error or invalid ID
- *       404:
- *         description: User not found
- *       500:
- *         description: Server error
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
-router.put('/:id', validateObjectId, validateUserUpdate, updateUser);
-
-
+router.put('/:id', requireAuth, requireAdmin, validateObjectId, validateUserUpdate, updateUser);
 
 /**
  * @swagger
  * /api/users/{id}:
  *   delete:
- *     summary: Delete user
+ *     summary: Delete user (Admin only)
  *     tags: [Users]
+ *     security:
+ *       - sessionAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -267,24 +193,11 @@ router.put('/:id', validateObjectId, validateUserUpdate, updateUser);
  *     responses:
  *       200:
  *         description: User deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: User deleted successfully
- *       400:
- *         description: Invalid ID format
- *       404:
- *         description: User not found
- *       500:
- *         description: Server error
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
-router.delete('/:id', validateObjectId, deleteUser);
+router.delete('/:id', requireAuth, requireAdmin, validateObjectId, deleteUser);
 
 module.exports = router;
